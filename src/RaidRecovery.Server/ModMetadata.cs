@@ -6,7 +6,7 @@ public record ModMetadata : IModMetadata
 {
     public string ModGuid { get; init; } = "com.oceane.raidrecovery";
     public string Name { get; init; } = "RaidRecovery";
-    public string Author { get; init; } = "Oceane";
+    public string Author { get; init; } = "VeKTyS";
     public List<string>? Contributors { get; init; }
     public SemanticVersioning.Version Version { get; init; } = new("0.11.1");
     public SemanticVersioning.Range SptVersion { get; init; } = new("~4.1.0");
