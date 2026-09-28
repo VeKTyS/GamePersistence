@@ -11,6 +11,12 @@ public sealed record StoredLoot(string Map, List<SpawnpointTemplate> Loot);
 /// <param name="Resumes">How many times this raid was resumed so far.</param>
 public sealed record RecoveryNotes(List<string> Taken, List<string> Corpses, int Resumes = 0)
 {
+    /// <summary>Time played in the raid so far, all its resumes added up.</summary>
+    public int SecondsPlayed { get; init; }
+
+    /// <summary>Items lying where the map did not put them, each as the JSON the game wrote.</summary>
+    public List<string> Loose { get; init; } = [];
+
     public static RecoveryNotes Empty => new([], []);
 }
 

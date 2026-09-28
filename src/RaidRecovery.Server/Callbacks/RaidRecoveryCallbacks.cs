@@ -50,6 +50,7 @@ public class RaidRecoveryCallbacks(
                 SecondsLeft = snapshot.Raid?.SecondsLeft,
                 SavedAt = snapshot.SavedAt,
                 Restorable = ProfileRestorer.IsRestorable(snapshot) && refusal is null,
+                Side = snapshot.Raid?.Side,
                 Reason = refusal,
             }
         );
@@ -74,6 +75,7 @@ public class RaidRecoveryCallbacks(
 
         var snapshot = result.Snapshot!;
         ArmLootReplay(sessionId, snapshot);
+        host.Weather.Arm(sessionId.ToString());
         logger.Success($"[RaidRecovery] Inventory and health restored, resuming on {snapshot.Map}");
         return httpResponseUtil.GetBody(
             new RestoreResponse
@@ -87,6 +89,7 @@ public class RaidRecoveryCallbacks(
                 World = snapshot.World,
                 Bots = snapshot.Bots,
                 Stats = snapshot.Player?.Stats,
+                Side = snapshot.Raid?.Side,
             }
         );
     }
@@ -100,6 +103,7 @@ public class RaidRecoveryCallbacks(
     {
         var discarded = host.Service.Discard(sessionId.ToString());
         host.Loot.Forget(sessionId.ToString());
+        host.Weather.Forget(sessionId.ToString());
         if (discarded)
         {
             logger.Info("[RaidRecovery] Snapshot discarded");
@@ -143,6 +147,7 @@ public class RaidRecoveryCallbacks(
             }
 
             host.Loot.Forget(sessionId.ToString());
+            host.Weather.Forget(sessionId.ToString());
         }
         catch (Exception ex)
         {
@@ -173,8 +178,10 @@ public class RaidRecoveryCallbacks(
                 new RecoveryTicket(
                     InventoryIds(snapshot),
                     Corpses(snapshot),
-                    holdsBots ? snapshot.Raid?.SecondsLeft : null,
-                    holdsBots ? snapshot.Bots!.Value.GetArrayLength() : 0
+                    holdsBots ? snapshot.Raid?.SecondsPlayed : null,
+                    holdsBots ? snapshot.Bots!.Value.GetArrayLength() : 0,
+                    Gone(snapshot),
+                    RawEntries(snapshot, "loose")
                 )
             );
         }
@@ -213,25 +220,46 @@ public class RaidRecoveryCallbacks(
     /// <summary>Bodies on the map, each kept as the text the game wrote: the server does not interpret them.</summary>
     internal static List<string> Corpses(Snapshot snapshot)
     {
-        var corpses = new List<string>();
+        return RawEntries(snapshot, "corpses");
+    }
+
+    /// <summary>Loot entries of the map state, each kept as the text the game wrote.</summary>
+    internal static List<string> RawEntries(Snapshot snapshot, string name)
+    {
+        var entries = new List<string>();
         if (
             snapshot.World is not { ValueKind: JsonValueKind.Object } world
-            || !world.TryGetProperty("corpses", out var list)
+            || !world.TryGetProperty(name, out var list)
             || list.ValueKind != JsonValueKind.Array
         )
         {
-            return corpses;
+            return entries;
         }
 
-        foreach (var corpse in list.EnumerateArray())
+        foreach (var entry in list.EnumerateArray())
         {
-            if (corpse.ValueKind == JsonValueKind.Object)
+            if (entry.ValueKind == JsonValueKind.Object)
             {
-                corpses.Add(corpse.GetRawText());
+                entries.Add(entry.GetRawText());
             }
         }
 
-        return corpses;
+        return entries;
+    }
+
+    /// <summary>Loot items that left the map. Empty when the snapshot does not say: an older plugin, or a reading that failed.</summary>
+    internal static List<string> Gone(Snapshot snapshot)
+    {
+        if (
+            snapshot.World is not { ValueKind: JsonValueKind.Object } world
+            || !world.TryGetProperty("gone", out var list)
+            || list.ValueKind != JsonValueKind.Array
+        )
+        {
+            return [];
+        }
+
+        return list.EnumerateArray().Where(id => id.ValueKind == JsonValueKind.String).Select(id => id.GetString()!).ToList();
     }
 
     private ValueTask<string> Body<T>(T data)

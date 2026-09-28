@@ -62,6 +62,33 @@ namespace RaidRecovery.Client.Recovery
             Plugin.Log.LogInfo($"Bots restored: {spawned} handed to the game out of {bots.Count} recorded");
         }
 
+        /// <summary>
+        /// A bot that was after the player goes after them again. We only tell its group where the player is:
+        /// the game decides the rest, as it does when a bot hears a shot.
+        /// </summary>
+        private static void Hunt(BotOwner owner)
+        {
+            try
+            {
+                var player = Singleton<GameWorld>.Instance?.MainPlayer;
+                var group = owner.BotsGroup;
+                if (player == null || group == null || !group.Enemies.ContainsKey(player))
+                {
+                    return;
+                }
+
+                group.ReportAboutEnemy(player, EEnemyPartVisibleType.Sence, owner);
+                if (owner.EnemiesController.EnemyInfos.TryGetValue(player, out var enemy))
+                {
+                    owner.Memory.GoalEnemy = enemy;
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Bot {owner.Profile?.Nickname} does not remember the player: {ex.Message}");
+            }
+        }
+
         private static async Task<bool> SpawnAsync(BotSpawner spawner, BotDto bot)
         {
             if (bot?.Position == null || bot.Profile == null)
@@ -116,6 +143,11 @@ namespace RaidRecovery.Client.Recovery
                     }
 
                     RestoredIds.Add(owner.GetPlayer.ProfileId);
+                    if (bot.HuntsPlayer)
+                    {
+                        Hunt(owner);
+                    }
+
                     Plugin.Log.LogInfo($"Bot back in the raid: {owner.Profile.Nickname} at {owner.GetPlayer.Position}");
                 },
                 spawner._cancellationTokenSource.Token

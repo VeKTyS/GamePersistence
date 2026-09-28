@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using System.Threading;
@@ -24,6 +25,9 @@ namespace RaidRecovery.Client.Raid
         public const string HideoutLocationId = "hideout";
 
         private readonly WorldCapture _world = new WorldCapture();
+
+        // What was seen of the loot so far. Lives as long as the raid: a resumed raid starts a new one.
+        private readonly LootMemory _lootMemory = new LootMemory();
         private GameWorld _gameWorld;
         private string _sessionId;
         private DateTime _startedAt;
@@ -211,6 +215,22 @@ namespace RaidRecovery.Client.Raid
                 pass = new CapturePass { Manual = manual };
             }
 
+            LootCapture loot = null;
+            if (Plugin.KeepLoot.Value)
+            {
+                try
+                {
+                    loot = new LootCapture(_lootMemory);
+                    loot.Plan(pass, _gameWorld);
+                }
+                catch (Exception ex)
+                {
+                    // The server then sorts the loot by what the player carries, as before
+                    Plugin.Log.LogError($"Could not list the loot of the map, the snapshot goes without it: {ex}");
+                    loot = null;
+                }
+            }
+
             // The player comes last: their position and gear are those of the moment the snapshot leaves
             pass.Add("statistics", () => character.ReadStats(player));
             pass.Add("profile", () => character.ReadProfile(player));
@@ -224,7 +244,7 @@ namespace RaidRecovery.Client.Raid
             );
 
             _pass = pass;
-            _finish = () => Task.Run(() => SendAsync(snapshot, character, bots, pass));
+            _finish = () => Task.Run(() => SendAsync(snapshot, character, bots, loot, pass));
             return true;
         }
 
@@ -265,6 +285,7 @@ namespace RaidRecovery.Client.Raid
                     DateTime = _dateTime,
                     GameTime = _gameWorld.GameDateTime?.Calculate().ToString("HH:mm"),
                     SecondsLeft = ReadSecondsLeft(),
+                    SecondsPlayed = ReadSecondsPlayed(),
                     Side = player.Side == EPlayerSide.Savage ? "Savage" : "Pmc",
                 },
                 Player = new PlayerDto
@@ -287,7 +308,19 @@ namespace RaidRecovery.Client.Raid
             return Math.Max(0, (int)timer.EscapeTimeSeconds());
         }
 
-        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, BotsCapture bots, CapturePass pass)
+        /// <summary>Time played in this raid, from its own start. A resumed raid counts from its resume.</summary>
+        private static int? ReadSecondsPlayed()
+        {
+            var timer = Singleton<AbstractGame>.Instance?.GameTimer;
+            if (timer == null || !timer.Started())
+            {
+                return null;
+            }
+
+            return Math.Max(0, (int)timer.PastTime.TotalSeconds);
+        }
+
+        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, BotsCapture bots, LootCapture loot, CapturePass pass)
         {
             try
             {
@@ -301,6 +334,12 @@ namespace RaidRecovery.Client.Raid
                 {
                     snapshot.Bots = bots.BotsToDtos();
                     snapshot.World.Corpses = bots.CorpsesToJson();
+                }
+
+                if (loot != null)
+                {
+                    snapshot.World.Gone = loot.GoneIds();
+                    snapshot.World.Loose = loot.LooseToJson();
                 }
 
                 var json = JsonConvert.SerializeObject(snapshot);
@@ -329,7 +368,7 @@ namespace RaidRecovery.Client.Raid
                 {
                     var size = Encoding.UTF8.GetByteCount(json);
                     Plugin.Log.LogInfo(
-                        $"Snapshot saved{(pass.Manual ? " (on request)" : "")}: read {pass.TotalMs:0.00} ms over {pass.Frames} frames (main thread), at most {pass.LongestFrameMs:0.00} ms in one frame, longest step {pass.LongestStep} {pass.LongestStepMs:0.00} ms, serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes, {bots?.BotCount ?? 0} bots, {bots?.CorpseCount ?? 0} bodies"
+                        $"Snapshot saved{(pass.Manual ? " (on request)" : "")}: read {pass.TotalMs:0.00} ms over {pass.Frames} frames (main thread), at most {pass.LongestFrameMs:0.00} ms in one frame, longest step {pass.LongestStep} {pass.LongestStepMs:0.00} ms, serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes, {bots?.BotCount ?? 0} bots, {bots?.CorpseCount ?? 0} bodies, {loot?.PresentCount ?? 0} loot items seen, {loot?.GoneCount ?? 0} gone, {loot?.LooseCount ?? 0} dropped or moved"
                     );
                 }
             }

@@ -31,8 +31,10 @@ namespace RaidRecovery.Client.Patches
                 }
 
                 var original = __result;
-                // Never longer than the normal raid: a snapshot must not be a way to extend a raid
-                __result = TimeSpan.FromSeconds(Math.Min(secondsLeft.Value, original.TotalSeconds));
+                // The time left is taken as it is. It used to be capped by the length the game gives the new raid,
+                // but that length is drawn again at each start for a scav: a raid with 15 minutes left came back
+                // with 10. The time left was read from a real raid, it cannot exceed what that raid had.
+                __result = TimeSpan.FromSeconds(secondsLeft.Value);
                 Plugin.Log.LogInfo($"Resumed raid duration: {__result:hh\\:mm\\:ss} instead of {original:hh\\:mm\\:ss}");
             }
             catch (Exception ex)

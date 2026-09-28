@@ -35,6 +35,10 @@ public record PendingResponse
     /// <summary>Why the raid cannot be resumed, when a rule of the server forbids it.</summary>
     [JsonPropertyName("reason")]
     public string? Reason { get; init; }
+
+    /// <summary>Pmc or Savage: the character the raid was played with.</summary>
+    [JsonPropertyName("side")]
+    public string? Side { get; init; }
 }
 
 /// <summary>
@@ -75,6 +79,10 @@ public record RestoreResponse
     /// <summary>Kills, experience and counters of the raid so far, handed back as the game sent them.</summary>
     [JsonPropertyName("stats")]
     public JsonElement? Stats { get; init; }
+
+    /// <summary>Pmc or Savage: the character the raid must be relaunched with.</summary>
+    [JsonPropertyName("side")]
+    public string? Side { get; init; }
 }
 
 public record DiscardResponse

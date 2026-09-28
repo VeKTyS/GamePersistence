@@ -5,11 +5,19 @@ namespace RaidRecovery.Server.Services;
 
 /// <summary>What was done with the loot SPT just generated.</summary>
 /// <param name="Replacement">Loot to serve instead, or null to keep the one SPT generated.</param>
-/// <param name="Removed">Items already taken, removed from the replacement.</param>
+/// <param name="Removed">Items that left the map, removed from the replacement.</param>
 /// <param name="Corpses">Bodies added to the replacement.</param>
-/// <param name="SecondsLeft">Time left in the interrupted raid, if its bots are to be restored as well.</param>
+/// <param name="SecondsPlayed">Time played in the raid so far, all its resumes added up, if its bots are to be restored as well.</param>
 /// <param name="BotsInSnapshot">Bots the snapshot stands for, alive or dead.</param>
-public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Removed, int Corpses = 0, int? SecondsLeft = null, int BotsInSnapshot = 0)
+/// <param name="Loose">Items dropped or moved by the player, added to the replacement.</param>
+public sealed record LootDecision(
+    List<SpawnpointTemplate>? Replacement,
+    int Removed,
+    int Corpses = 0,
+    int? SecondsPlayed = null,
+    int BotsInSnapshot = 0,
+    int Loose = 0
+)
 {
     /// <summary>true if the raid starts with the loot of the interrupted raid instead of new loot.</summary>
     public bool Replayed => Replacement is not null;
@@ -18,22 +26,31 @@ public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Rem
 /// <summary>What a recovery hands over for the raid start that follows it.</summary>
 /// <param name="InventoryIds">Everything the player carries: what comes from the map's loot is removed from it.</param>
 /// <param name="Corpses">Bodies on the map, each as the JSON the game wrote. They replace those of the previous recovery.</param>
-/// <param name="SecondsLeft">Set only when the snapshot holds the bots: the spawns already played are then dropped.</param>
+/// <param name="SecondsPlayed">Time played since the raid, or its last resume, started. Set only when the snapshot holds the bots.</param>
 /// <param name="BotsAlive">Bots alive in the snapshot. With the bodies, they are the bots the map must not spawn again.</param>
-public sealed record RecoveryTicket(IEnumerable<string> InventoryIds, IReadOnlyList<string>? Corpses = null, int? SecondsLeft = null, int BotsAlive = 0);
+/// <param name="Gone">Loot items the game saw on the map and no longer sees. They count as taken, whoever holds them.</param>
+/// <param name="Loose">Items lying where the map did not put them, each as the JSON the game wrote.</param>
+public sealed record RecoveryTicket(
+    IEnumerable<string> InventoryIds,
+    IReadOnlyList<string>? Corpses = null,
+    int? SecondsPlayed = null,
+    int BotsAlive = 0,
+    IReadOnlyCollection<string>? Gone = null,
+    IReadOnlyList<string>? Loose = null
+);
 
 /// <summary>
 /// SPT draws new loot at every raid start. For a resumed raid to find its crates as they were left, we keep the
-/// loot of the raid in progress and serve it again, minus what the player took, plus the bodies left behind.
+/// loot of the raid in progress and serve it again, minus what left the map, plus what was left on it.
 /// </summary>
-/// <param name="parseCorpse">Reads a body written by the game. null if it cannot be read.</param>
-public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointTemplate?>? parseCorpse = null)
+/// <param name="parseLoot">Reads a loot entry written by the game, body or item. null if it cannot be read.</param>
+public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointTemplate?>? parseLoot = null)
 {
     private readonly Lock _gate = new();
 
     // Profile -> raid about to be resumed. In memory only: the recovery and the raid start that
     // follows are a few seconds apart. If the server restarts in between, the raid gets new loot.
-    private readonly Dictionary<string, (string Map, int? SecondsLeft, int Bots)> _armed = [];
+    private readonly Dictionary<string, (string Map, int? SecondsPlayed, int Bots)> _armed = [];
 
     /// <summary>
     /// A recovery was just applied: the next raid start on this map is a resume.
@@ -51,8 +68,19 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
             var notes = store.ReadNotes(profileId);
             var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
             taken.UnionWith(ticket.InventoryIds);
-            store.WriteNotes(profileId, new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []], notes.Resumes + 1));
-            _armed[profileId] = (map, ticket.SecondsLeft, ticket.BotsAlive + (ticket.Corpses?.Count ?? 0));
+            taken.UnionWith(ticket.Gone ?? []);
+
+            // The clock of a resumed raid restarts at zero: the time played adds up from one resume to the next
+            int? played = ticket.SecondsPlayed is { } seconds ? notes.SecondsPlayed + Math.Max(0, seconds) : null;
+            store.WriteNotes(
+                profileId,
+                new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []], notes.Resumes + 1)
+                {
+                    Loose = MergeLoose(notes.Loose, ticket.Loose ?? [], taken),
+                    SecondsPlayed = played ?? notes.SecondsPlayed,
+                }
+            );
+            _armed[profileId] = (map, played, ticket.BotsAlive + (ticket.Corpses?.Count ?? 0));
         }
     }
 
@@ -86,11 +114,7 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
                 var stored = store.ReadLoot(profileId);
                 if (stored is not null && SameMap(stored.Map, map))
                 {
-                    var notes = store.ReadNotes(profileId);
-                    var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
-                    var replacement = LootFilter.WithoutTaken(stored.Loot, taken, out var removed);
-                    var corpses = AddCorpses(replacement, notes.Corpses);
-                    return new LootDecision(replacement, removed, corpses, armed.SecondsLeft, armed.Bots);
+                    return Replay(stored, store.ReadNotes(profileId), armed.SecondsPlayed, armed.Bots);
                 }
             }
 
@@ -116,37 +140,69 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
         }
     }
 
-    /// <summary>A body that cannot be read is skipped: one bad body must not cost the whole loot.</summary>
-    private int AddCorpses(List<SpawnpointTemplate> loot, List<string> corpses)
+    private LootDecision Replay(StoredLoot stored, RecoveryNotes notes, int? secondsPlayed, int bots)
     {
-        if (parseCorpse is null)
+        var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
+        var loose = Parse(notes.Loose).Where(entry => !taken.Contains(entry.Root!)).ToList();
+        var moved = new HashSet<string>(loose.Select(entry => entry.Root!), StringComparer.OrdinalIgnoreCase);
+        // An item the player moved is served where they left it, not also where the map had put it
+        var original = stored.Loot.Where(spawnpoint => spawnpoint.Root is null || !moved.Contains(spawnpoint.Root)).ToList();
+
+        var replacement = LootFilter.WithoutTaken(original, taken, out var removed);
+        replacement.AddRange(loose);
+        var corpses = Parse(notes.Corpses);
+        replacement.AddRange(corpses);
+        return new LootDecision(replacement, removed, corpses.Count, secondsPlayed, bots, loose.Count);
+    }
+
+    /// <summary>
+    /// Items dropped before an earlier recovery are part of the loot of the resumed raid, so the game no longer
+    /// reports them as dropped. They are kept until they leave the map, unless a newer entry moves them.
+    /// </summary>
+    private List<string> MergeLoose(List<string> before, IReadOnlyList<string> now, HashSet<string> taken)
+    {
+        var merged = new List<string>(now);
+        var replaced = new HashSet<string>(Parse(now).Select(entry => entry.Root!), StringComparer.OrdinalIgnoreCase);
+        foreach (var json in before)
         {
-            return 0;
+            var entry = Parse([json]).FirstOrDefault();
+            if (entry is not null && !taken.Contains(entry.Root!) && !replaced.Contains(entry.Root!))
+            {
+                merged.Add(json);
+            }
         }
 
-        var added = 0;
-        foreach (var json in corpses)
+        return merged;
+    }
+
+    /// <summary>An entry that cannot be read is skipped: one bad entry must not cost the whole loot.</summary>
+    private List<SpawnpointTemplate> Parse(IEnumerable<string> entries)
+    {
+        var parsed = new List<SpawnpointTemplate>();
+        if (parseLoot is null)
         {
-            SpawnpointTemplate? corpse;
+            return parsed;
+        }
+
+        foreach (var json in entries)
+        {
+            SpawnpointTemplate? entry;
             try
             {
-                corpse = parseCorpse(json);
+                entry = parseLoot(json);
             }
             catch (Exception)
             {
                 continue;
             }
 
-            if (corpse?.Root is null || corpse.Items is null)
+            if (entry?.Root is not null && entry.Items is not null)
             {
-                continue;
+                parsed.Add(entry);
             }
-
-            loot.Add(corpse);
-            added++;
         }
 
-        return added;
+        return parsed;
     }
 
     private static bool SameMap(string? left, string? right)

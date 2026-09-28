@@ -49,6 +49,10 @@ namespace RaidRecovery.Client.Recovery
         private GameWorld _diagnosticsWorld;
         private float _diagnosticsAt;
 
+        // The screen fills its texts when it opens: we let it finish before changing one
+        private const float WarningDelaySeconds = 0.3f;
+        private float _fixWarningAt;
+
         private RestoreResult _placement;
         private GameWorld _placementWorld;
         private float _placeAt;
@@ -219,6 +223,12 @@ namespace RaidRecovery.Client.Recovery
 
         private void Update()
         {
+            if (_step == Step.Choosing && _fixWarningAt > 0f && Time.unscaledTime >= _fixWarningAt)
+            {
+                _fixWarningAt = 0f;
+                ReturnToRaidScreen.ReplaceWarning();
+            }
+
             if (_diagnosticsWorld != null && Time.unscaledTime >= _diagnosticsAt)
             {
                 var world = _diagnosticsWorld;
@@ -321,8 +331,9 @@ namespace RaidRecovery.Client.Recovery
                 _mainThread.Enqueue(() =>
                 {
                     _offer = pending;
-                    if (Plugin.GameScreen.Value && ReturnToRaidScreen.TryShow(pending.Map, Resume, Discard))
+                    if (Plugin.GameScreen.Value && ReturnToRaidScreen.TryShow(pending.Map, pending.Side, Resume, Discard))
                     {
+                        _fixWarningAt = Time.unscaledTime + WarningDelaySeconds;
                         // The game draws the choice: our own window stays closed
                         _step = Step.Choosing;
                         Plugin.Log.LogInfo("Return-to-raid screen of the game shown");
@@ -392,7 +403,7 @@ namespace RaidRecovery.Client.Recovery
             _step = Step.Launching;
             try
             {
-                RaidLauncher.Start(ticket.Map, ticket.DateTime);
+                RaidLauncher.Start(ticket.Map, ticket.DateTime, ticket.Side);
                 Plugin.Log.LogInfo($"Raid relaunched on {ticket.Map}");
             }
             catch (Exception ex)

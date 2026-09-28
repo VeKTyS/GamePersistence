@@ -33,10 +33,17 @@ public class ProfileRestorer(
 {
     public const string PmcSide = "Pmc";
 
-    /// <summary>A snapshot is restorable if it carries a profile and comes from a PMC raid.</summary>
+    public const string ScavSide = "Savage";
+
+    /// <summary>A snapshot is restorable if it carries a profile and says which character it belongs to.</summary>
     public static bool IsRestorable(Snapshot snapshot)
     {
-        return snapshot.Player?.Profile is not null && string.Equals(snapshot.Raid?.Side, PmcSide, StringComparison.OrdinalIgnoreCase);
+        return snapshot.Player?.Profile is not null && (IsSide(snapshot, PmcSide) || IsSide(snapshot, ScavSide));
+    }
+
+    private static bool IsSide(Snapshot snapshot, string side)
+    {
+        return string.Equals(snapshot.Raid?.Side, side, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <returns>null if the profile was updated and saved, otherwise the reason for the failure.</returns>
@@ -70,10 +77,16 @@ public class ProfileRestorer(
             return "IncompleteHealth";
         }
 
-        var profile = profileHelper.GetPmcProfile(sessionId);
+        var isScav = IsSide(snapshot, ScavSide);
+        var profile = isScav ? profileHelper.GetScavProfile(sessionId) : profileHelper.GetPmcProfile(sessionId);
         if (profile is null)
         {
             return "ProfileNotFound";
+        }
+
+        if (isScav)
+        {
+            return await ApplyToScavAsync(sessionId, profile, captured, cancellationToken);
         }
 
         try
@@ -115,6 +128,54 @@ public class ProfileRestorer(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// A scav raid is resumed with the scav as it was in the raid. We take what SPT keeps of a scav at the end
+    /// of a raid (HandlePostRaidPlayerScavAsync), minus what belongs to a raid that is over: the gear moved to
+    /// the stash, the standing gained with Fence, the quest progress handed to the PMC. The true end of the
+    /// resumed raid will do all that.
+    /// </summary>
+    private async Task<string?> ApplyToScavAsync(MongoId sessionId, PmcData scav, PmcData captured, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Written as it is, like SPT does for a scav: its health is not rebuilt from the changes of the raid
+            scav.Health = captured.Health;
+            inRaidHelper.SetInventory(sessionId, scav, captured, isSurvived: true, isTransfer: false);
+
+            if (captured.Skills is not null)
+            {
+                scav.Skills = captured.Skills;
+            }
+
+            if (captured.Encyclopedia is not null)
+            {
+                scav.Encyclopedia = captured.Encyclopedia;
+            }
+
+            if (captured.TaskConditionCounters is not null)
+            {
+                scav.TaskConditionCounters = captured.TaskConditionCounters;
+            }
+
+            if (captured.Quests is not null)
+            {
+                scav.Quests = NormalizeQuests(captured.Quests);
+            }
+
+            await saveServer.SaveProfileAsync(sessionId, cancellationToken);
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.Error("[RaidRecovery] Applying the snapshot to the scav failed", ex);
+            return "ApplyFailed";
+        }
     }
 
     /// <summary>

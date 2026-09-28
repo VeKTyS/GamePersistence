@@ -219,16 +219,129 @@ public class LootReplayServiceTests
     }
 
     [Fact]
-    public void The_time_left_travels_with_the_recovery_when_the_snapshot_holds_the_bots()
+    public void The_time_played_travels_with_the_recovery_when_the_snapshot_holds_the_bots()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001"], 1380, BotsAlive: 4));
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001"], 600, BotsAlive: 4));
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
-        Assert.Equal(1380, decision.SecondsLeft);
+        Assert.Equal(600, decision.SecondsPlayed);
         // Four alive and one body: five bots the map must not spawn again
         Assert.Equal(5, decision.BotsInSnapshot);
+    }
+
+    [Fact]
+    public void An_item_that_left_the_map_is_removed_whoever_holds_it()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        // The bolts are in no inventory: merged into a stack, or used up. The game saw them, then no longer did.
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Gone: [Loot.Bolts]));
+
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(1, decision.Removed);
+        Assert.DoesNotContain(Loot.Bolts, Loot.Ids(decision.Replacement!));
+    }
+
+    [Fact]
+    public void Loot_the_game_never_put_on_the_map_is_kept()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        // Seen in game with version 0.11.0: judging on what the game sees removed 46 items nobody had touched,
+        // quest items among them. Nothing is reported gone here, so nothing must go.
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Gone: []));
+
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(0, decision.Removed);
+        Assert.Equal(Loot.Ids(Loot.Sample()), Loot.Ids(decision.Replacement!));
+    }
+
+    [Fact]
+    public void Items_that_left_the_map_add_up_over_several_recoveries()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Gone: [Loot.Bolts]));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // The resumed raid never had the bolts: it cannot report them gone a second time
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Gone: [Loot.Wrench]));
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.DoesNotContain(Loot.Bolts, Loot.Ids(decision.Replacement!));
+        Assert.DoesNotContain(Loot.Wrench, Loot.Ids(decision.Replacement!));
+    }
+
+    [Fact]
+    public void An_item_dropped_by_the_player_is_put_back_where_it_was_dropped()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Loose: ["corpse:a00000000000000000000001"]));
+
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(1, decision.Loose);
+        Assert.Contains(decision.Replacement!, spawnpoint => spawnpoint.Id == "body-a00000000000000000000001");
+    }
+
+    [Fact]
+    public void An_item_of_the_map_moved_by_the_player_is_served_once_at_its_new_place()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Loose: ["corpse:" + Loot.Wrench]));
+
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.DoesNotContain(decision.Replacement!, spawnpoint => spawnpoint.Id == "wrench");
+        Assert.Single(decision.Replacement!, spawnpoint => spawnpoint.Root == Loot.Wrench);
+    }
+
+    [Fact]
+    public void An_item_dropped_before_an_earlier_recovery_is_kept_until_it_leaves_the_map()
+    {
+        const string dropped = "a00000000000000000000001";
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Loose: ["corpse:" + dropped]));
+        service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // In the resumed raid the item is part of the loot: the game no longer reports it as dropped
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([]));
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(1, decision.Loose);
+    }
+
+    [Fact]
+    public void An_item_dropped_then_picked_up_again_is_not_put_back()
+    {
+        const string dropped = "a00000000000000000000001";
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], Loose: ["corpse:" + dropped]));
+        service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([dropped], Gone: [dropped]));
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(0, decision.Loose);
+    }
+
+    [Fact]
+    public void The_time_played_adds_up_over_several_recoveries()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 300));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // The clock of the resumed raid restarted at zero: 120 s of it, on top of the first 300
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 120));
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(420, decision.SecondsPlayed);
     }
 
     [Fact]
@@ -258,11 +371,11 @@ public class LootReplayServiceTests
     }
 
     [Fact]
-    public void A_new_raid_carries_no_time_left()
+    public void A_new_raid_carries_no_time_played()
     {
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
 
-        Assert.Null(decision.SecondsLeft);
+        Assert.Null(decision.SecondsPlayed);
     }
 
     [Fact]

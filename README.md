@@ -43,6 +43,9 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 - Opened doors, used switches, open or closed extractions, containers already searched
 - Bots that were alive, with their gear, health and position
 - Bodies left on the map, with what they carried
+- Items you dropped or moved, where you left them
+- Weather
+- Scav raids, resumed with the scav
 
 ## Server settings
 
@@ -58,20 +61,18 @@ In `user/mods/RaidRecovery/config.json`:
 
 These are not handled yet and are planned for later versions.
 
-- **A restored bot forgets what it was doing.** It comes back where it stood, with its gear and health, but
-  without its target, its alert state or its group.
+- **A restored bot forgets most of what it was doing.** It comes back where it stood, with its gear and
+  health, and goes after you again if it was doing so, but it loses its alert state and its group.
 - **A half-searched container comes back fully searched.**
-- **Items dropped on the ground are lost.** An item you picked up and then dropped is in neither your
-  inventory nor the map.
-- **Items merged into a stack come back.** Rounds picked up into a stack you already carried show up again
-  where you found them.
+- **A stack you only took part of comes back whole.** Take 20 rounds out of a stack of 60 and the 60 are
+  there again.
+- **After a server restart, the weather of a resumed raid no longer moves on.** It stays as it was when the
+  raid was cut.
 - **An extraction countdown is not restored.** Only the open or closed state of an extraction is.
 - **A door caught in the middle of its movement is not restored.**
-- **Weather is not restored.** The server generates new weather for the resumed raid.
 - **Discarding a raid costs nothing, on purpose.** Unlike the live version, choosing not to resume does not
   take your gear away: you go back to the profile you had before the raid. The return-to-raid screen comes
-  from the game and still warns about a penalty: there is none.
-- **Scav raids cannot be resumed.** The snapshot is detected, then discarded.
+  from the game: its warning about a penalty is replaced, in the languages the mod knows the word for.
 - **Progress since the last snapshot is lost.** A snapshot is taken every 30 seconds by default, so up to
   that much progress can be missing.
 - **Closing the game on purpose also triggers a recovery.** Alt+F4 just before dying brings back the state of

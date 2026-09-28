@@ -45,19 +45,13 @@ public class LootGeneratedPatch : AbstractPatch
 
             __result.Loot = decision.Replacement!;
             Logger?.Success(
-                $"[RaidRecovery] Loot of the interrupted raid served again on {name}: {decision.Replacement!.Count} spawn points, {decision.Removed} items already taken removed, {decision.Corpses} bodies put back"
+                $"[RaidRecovery] Loot of the interrupted raid served again on {name}: {decision.Replacement!.Count} spawn points, {decision.Removed} items that left the map removed, {decision.Loose} dropped items and {decision.Corpses} bodies put back"
             );
 
-            if (decision.SecondsLeft is { } secondsLeft && __result.EscapeTimeLimit is { } minutes)
+            // The time played comes from the clock of the game, not from the length of the raid: that length
+            // is drawn again at each start for a scav, and a subtraction on it gave a negative time played
+            if (decision.SecondsPlayed is { } elapsed)
             {
-                var elapsed = (int)(minutes * 60) - secondsLeft;
-                if (elapsed <= 0)
-                {
-                    // More time left than the raid lasts: the snapshot and the map disagree, we touch nothing
-                    Logger?.Warning($"[RaidRecovery] Bot spawns left as they are: {secondsLeft} s left for a raid of {minutes} min");
-                    return;
-                }
-
                 var shift = WaveShift.Apply(__result, elapsed, decision.BotsInSnapshot);
                 Logger?.Success(
                     $"[RaidRecovery] Bot spawns after {elapsed} s played and {decision.BotsInSnapshot} bots in the snapshot: {shift.Removed} removed, {shift.Replayed} played again at once, {shift.Shifted} still to come"

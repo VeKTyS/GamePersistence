@@ -6,6 +6,7 @@ using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Eft.Common;
+using SPTarkov.Server.Core.Models.Spt.Weather;
 using SPTarkov.Server.Core.Utils;
 
 namespace RaidRecovery.Server;
@@ -38,11 +39,20 @@ public class RaidRecoveryHost : IOnLoad
             // What the template does not declare (body shape, bones) lands in its extension data and leaves as it came
             json => jsonUtil.Deserialize<SpawnpointTemplate>(json)
         );
+        Weather = new WeatherReplayService(
+            new WeatherStore(
+                StorageDirectory,
+                weather => jsonUtil.Serialize(weather),
+                json => jsonUtil.Deserialize<GetLocalWeatherResponseData>(json)
+            )
+        );
     }
 
     public RaidRecoveryService Service { get; }
 
     public LootReplayService Loot { get; }
+
+    public WeatherReplayService Weather { get; }
 
     public RaidRecoveryConfig Config { get; }
 
@@ -65,6 +75,17 @@ public class RaidRecoveryHost : IOnLoad
         {
             // Without the patch, the rest of the mod still works: a resumed raid just gets new loot
             _logger.Error("[RaidRecovery] Loot replay unavailable", ex);
+        }
+
+        try
+        {
+            WeatherGeneratedPatch.Service = Weather;
+            WeatherGeneratedPatch.Logger = _logger;
+            new WeatherGeneratedPatch().Enable();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("[RaidRecovery] Weather replay unavailable", ex);
         }
 
         _logger.Success($"[RaidRecovery] Loaded. Snapshots in {StorageDirectory}, expiry {Config.MaxAge.TotalHours:0} h, "

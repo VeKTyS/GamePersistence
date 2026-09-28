@@ -19,7 +19,14 @@ namespace RaidRecovery.Client.Recovery
             Watch(app.ComebackToMainMenu(), "Menu reload");
         }
 
-        public static void Start(string map, string dateTime)
+        public const string ScavSide = "Savage";
+
+        public static bool IsScav(string side)
+        {
+            return string.Equals(side, ScavSide, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static void Start(string map, string dateTime, string side)
         {
             var app = ClientAppUtils.GetMainApp() ?? throw new InvalidOperationException("Game application not found");
 
@@ -31,6 +38,8 @@ namespace RaidRecovery.Client.Recovery
             }
 
             var settings = app._raidSettings;
+            // The raid is relaunched with the character it was played with: the menu may be set on the other one
+            settings.Side = IsScav(side) ? EFT.ESideType.Savage : EFT.ESideType.Pmc;
             if (Enum.TryParse(dateTime, out EDateTime slot))
             {
                 settings.SelectedDateTime = slot;

@@ -56,6 +56,11 @@
       <HintPath>$(SptManagedPath)\DissonanceVoip.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Texts of the game's screens -->
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(SptManagedPath)\Unity.TextMeshPro.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>$(SptManagedPath)\UnityEngine.dll</HintPath>
       <Private>false</Private>

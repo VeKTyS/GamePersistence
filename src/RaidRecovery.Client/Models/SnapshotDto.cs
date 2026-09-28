@@ -57,6 +57,10 @@ namespace RaidRecovery.Client.Models
         [JsonProperty("difficulty")]
         public int Difficulty { get; set; }
 
+        /// <summary>true if the bot was after the player when the raid was cut.</summary>
+        [JsonProperty("huntsPlayer")]
+        public bool HuntsPlayer { get; set; }
+
         /// <summary>Whole profile of the bot, gear and health included, serialized by the game.</summary>
         [JsonProperty("profile")]
         public JRaw Profile { get; set; }
@@ -87,6 +91,17 @@ namespace RaidRecovery.Client.Models
         /// </summary>
         [JsonProperty("corpses", NullValueHandling = NullValueHandling.Ignore)]
         public List<JRaw> Corpses { get; set; }
+
+        /// <summary>
+        /// Loot items the game saw on the map earlier in the raid and no longer sees: taken, used up, merged
+        /// into a stack. Absent when the reading failed: the server then only knows what the player carries.
+        /// </summary>
+        [JsonProperty("gone", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> Gone { get; set; }
+
+        /// <summary>Items lying where the map did not put them, in the format of the loot of a raid.</summary>
+        [JsonProperty("loose", NullValueHandling = NullValueHandling.Ignore)]
+        public List<JRaw> Loose { get; set; }
     }
 
     internal sealed class RaidDto
@@ -102,6 +117,9 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("secondsLeft")]
         public int? SecondsLeft { get; set; }
+
+        [JsonProperty("secondsPlayed")]
+        public int? SecondsPlayed { get; set; }
 
         [JsonProperty("side")]
         public string Side { get; set; }
@@ -189,6 +207,9 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("reason")]
         public string Reason { get; set; }
+
+        [JsonProperty("side")]
+        public string Side { get; set; }
     }
 
     internal sealed class RestoreResult
@@ -222,5 +243,8 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("stats")]
         public JRaw Stats { get; set; }
+
+        [JsonProperty("side")]
+        public string Side { get; set; }
     }
 }

@@ -98,6 +98,10 @@ public record RaidInfo
     [JsonPropertyName("secondsLeft")]
     public int? SecondsLeft { get; init; }
 
+    /// <summary>Time played since this raid, or this resume of it, started.</summary>
+    [JsonPropertyName("secondsPlayed")]
+    public int? SecondsPlayed { get; init; }
+
     [JsonPropertyName("gameTime")]
     public string? GameTime { get; init; }
 

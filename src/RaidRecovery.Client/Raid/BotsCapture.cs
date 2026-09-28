@@ -97,8 +97,15 @@ namespace RaidRecovery.Client.Raid
                 Side = (int)player.Profile.Side,
                 Role = (int)settings.Role,
                 Difficulty = (int)settings.BotDifficulty,
+                HuntsPlayer = HuntsPlayer(player),
                 Descriptor = descriptor,
             };
+        }
+
+        private static bool HuntsPlayer(Player bot)
+        {
+            var target = bot.AIData?.BotOwner?.Memory?.GoalEnemy?.Person;
+            return target != null && target.IsYourPlayer;
         }
 
         private static LootItemSerializer Describe(Corpse corpse)
@@ -135,6 +142,7 @@ namespace RaidRecovery.Client.Raid
                     Side = bot.Side,
                     Role = bot.Role,
                     Difficulty = bot.Difficulty,
+                    HuntsPlayer = bot.HuntsPlayer,
                     Profile = new JRaw(bot.Descriptor.ToJson()),
                 })
                 .ToList();
@@ -152,6 +160,7 @@ namespace RaidRecovery.Client.Raid
             public int Side;
             public int Role;
             public int Difficulty;
+            public bool HuntsPlayer;
             public ProfileDescriptor Descriptor;
         }
     }
