@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <!-- Root of the SPT installation we compile against. Can be overridden: dotnet build -p:SptPath=D:\SPT -->
+    <SptPath Condition="'$(SptPath)' == ''">C:\SPT</SptPath>
+    <SptServerPath>$(SptPath)\SPT_Runtime</SptServerPath>
+    <SptManagedPath>$(SptPath)\EscapeFromTarkov_Data\Managed</SptManagedPath>
+    <SptBepInExPath>$(SptPath)\BepInEx</SptBepInExPath>
+    <ModVersion>0.3.0</ModVersion>
+  </PropertyGroup>
+</Project>

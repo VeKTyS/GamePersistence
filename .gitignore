@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+
+# .NET SDK and tools installed locally for this project
+.tools/
+
+# Profile backups: personal data, never in the repository
+.backups/
+
+# Development environments
+.vs/
+.idea/
+*.user

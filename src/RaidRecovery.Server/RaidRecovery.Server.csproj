@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RaidRecovery.Server</RootNamespace>
+    <AssemblyName>RaidRecovery.Server</AssemblyName>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Library</OutputType>
+    <Version>$(ModVersion)</Version>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- The output folder is directly the one to copy into user/mods -->
+    <OutputPath>bin\$(Configuration)\RaidRecovery\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Otherwise the Web SDK generates a useless .json manifest in the mod folder -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <!--
+    We compile against the assemblies of the installation (4.1.6) and not against NuGet (stopped at 4.1.2):
+    some APIs moved between minor versions (IOnDIConstruct for example). Private=false: these DLLs
+    are already loaded by the server, we do not copy them into the mod folder.
+  -->
+  <ItemGroup>
+    <Reference Include="SPTarkov.Server.Core">
+      <HintPath>$(SptServerPath)\SPTarkov.Server.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.Common">
+      <HintPath>$(SptServerPath)\SPTarkov.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SPTarkov.DI">
+      <HintPath>$(SptServerPath)\SPTarkov.DI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SemanticVersioning">
+      <HintPath>$(SptServerPath)\SemanticVersioning.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="config.json" CopyToOutputDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="RaidRecovery.Server.Tests" />
+  </ItemGroup>
+
+</Project>
