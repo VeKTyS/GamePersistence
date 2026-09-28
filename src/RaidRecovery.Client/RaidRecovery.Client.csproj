@@ -51,6 +51,11 @@
       <HintPath>$(SptManagedPath)\Sirenix.Serialization.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- The game's Player implements an interface of this library: the compiler needs it to see a Player as an IPlayer -->
+    <Reference Include="DissonanceVoip">
+      <HintPath>$(SptManagedPath)\DissonanceVoip.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>$(SptManagedPath)\UnityEngine.dll</HintPath>
       <Private>false</Private>

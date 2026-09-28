@@ -36,6 +36,12 @@ public class RaidRecoveryCallbacks(
         }
 
         logger.Info($"[RaidRecovery] Interrupted raid detected on {snapshot.Map}, snapshot from {snapshot.SavedAt:u}");
+        var refusal = Refusal(sessionId, snapshot);
+        if (refusal is not null)
+        {
+            logger.Warning($"[RaidRecovery] This raid cannot be resumed: {refusal}");
+        }
+
         return Body(
             new PendingResponse
             {
@@ -43,16 +49,21 @@ public class RaidRecoveryCallbacks(
                 Map = snapshot.Map,
                 SecondsLeft = snapshot.Raid?.SecondsLeft,
                 SavedAt = snapshot.SavedAt,
-                Restorable = ProfileRestorer.IsRestorable(snapshot),
+                Restorable = ProfileRestorer.IsRestorable(snapshot) && refusal is null,
+                Reason = refusal,
             }
         );
     }
 
     public async ValueTask<string> Restore(MongoId sessionId, CancellationToken cancellationToken)
     {
+        // Checked again here: the window of the game is not the only way to reach this route
         var result = await host.Service.RestoreAsync(
             sessionId.ToString(),
-            snapshot => restorer.ApplyAsync(sessionId, snapshot, cancellationToken)
+            snapshot =>
+                Refusal(sessionId, snapshot) is { } refusal
+                    ? Task.FromResult<string?>(refusal)
+                    : restorer.ApplyAsync(sessionId, snapshot, cancellationToken)
         );
 
         if (!result.Restored)
@@ -75,8 +86,14 @@ public class RaidRecoveryCallbacks(
                 Rotation = snapshot.Player?.Rotation,
                 World = snapshot.World,
                 Bots = snapshot.Bots,
+                Stats = snapshot.Player?.Stats,
             }
         );
+    }
+
+    private string? Refusal(MongoId sessionId, Snapshot snapshot)
+    {
+        return ResumePolicy.Refusal(snapshot, host.Loot.ResumesDone(sessionId.ToString()), host.Config);
     }
 
     public ValueTask<string> Discard(MongoId sessionId)
@@ -153,7 +170,12 @@ public class RaidRecoveryCallbacks(
             host.Loot.Arm(
                 sessionId.ToString(),
                 snapshot.Map,
-                new RecoveryTicket(InventoryIds(snapshot), Corpses(snapshot), holdsBots ? snapshot.Raid?.SecondsLeft : null)
+                new RecoveryTicket(
+                    InventoryIds(snapshot),
+                    Corpses(snapshot),
+                    holdsBots ? snapshot.Raid?.SecondsLeft : null,
+                    holdsBots ? snapshot.Bots!.Value.GetArrayLength() : 0
+                )
             );
         }
         catch (Exception ex)

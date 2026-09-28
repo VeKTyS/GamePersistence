@@ -31,6 +31,10 @@ public record PendingResponse
     /// <summary>false if the snapshot does not hold what is needed to restore the character (capture from milestone L0, scav raid).</summary>
     [JsonPropertyName("restorable")]
     public bool Restorable { get; init; }
+
+    /// <summary>Why the raid cannot be resumed, when a rule of the server forbids it.</summary>
+    [JsonPropertyName("reason")]
+    public string? Reason { get; init; }
 }
 
 /// <summary>
@@ -67,6 +71,10 @@ public record RestoreResponse
     /// <summary>Bots alive at the snapshot, handed back as the game sent them.</summary>
     [JsonPropertyName("bots")]
     public JsonElement? Bots { get; init; }
+
+    /// <summary>Kills, experience and counters of the raid so far, handed back as the game sent them.</summary>
+    [JsonPropertyName("stats")]
+    public JsonElement? Stats { get; init; }
 }
 
 public record DiscardResponse

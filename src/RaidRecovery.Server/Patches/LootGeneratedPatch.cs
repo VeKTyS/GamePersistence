@@ -58,9 +58,9 @@ public class LootGeneratedPatch : AbstractPatch
                     return;
                 }
 
-                var shift = WaveShift.Apply(__result, elapsed);
+                var shift = WaveShift.Apply(__result, elapsed, decision.BotsInSnapshot);
                 Logger?.Success(
-                    $"[RaidRecovery] Bot spawns moved {elapsed} s closer: {shift.WavesRemoved + shift.BossSpawnsRemoved} already played removed, {shift.WavesKept + shift.BossSpawnsKept} kept"
+                    $"[RaidRecovery] Bot spawns after {elapsed} s played and {decision.BotsInSnapshot} bots in the snapshot: {shift.Removed} removed, {shift.Replayed} played again at once, {shift.Shifted} still to come"
                 );
             }
         }

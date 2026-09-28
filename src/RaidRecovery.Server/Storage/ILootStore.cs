@@ -8,7 +8,8 @@ public sealed record StoredLoot(string Map, List<SpawnpointTemplate> Loot);
 /// <summary>What the recoveries of a raid taught us about its loot.</summary>
 /// <param name="Taken">Identifiers of the items the player took. They add up from one recovery to the next.</param>
 /// <param name="Corpses">Bodies lying on the map at the last snapshot, each as the JSON the game wrote.</param>
-public sealed record RecoveryNotes(List<string> Taken, List<string> Corpses)
+/// <param name="Resumes">How many times this raid was resumed so far.</param>
+public sealed record RecoveryNotes(List<string> Taken, List<string> Corpses, int Resumes = 0)
 {
     public static RecoveryNotes Empty => new([], []);
 }

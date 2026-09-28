@@ -243,6 +243,10 @@ namespace RaidRecovery.Client.Raid
             {
                 var stopwatch = Stopwatch.StartNew();
                 snapshot.Player.Profile = new JRaw(character.ToJson());
+                if (character.StatsJson != null)
+                {
+                    snapshot.Player.Stats = new JRaw(character.StatsJson);
+                }
                 if (bots != null)
                 {
                     snapshot.Bots = bots.BotsToDtos();

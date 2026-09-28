@@ -1,3 +1,5 @@
 {
-  "maxAgeHours": 24
+  "maxAgeHours": 24,
+  "maxResumesPerRaid": 0,
+  "blockResumeUnderVitalHealthPercent": 0
 }

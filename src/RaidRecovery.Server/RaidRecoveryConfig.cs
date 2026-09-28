@@ -15,6 +15,23 @@ public record RaidRecoveryConfig
     [JsonIgnore]
     public TimeSpan MaxAge => TimeSpan.FromHours(Math.Clamp(MaxAgeHours, MinMaxAgeHours, MaxMaxAgeHours));
 
+    /// <summary>How many times one raid may be resumed. 0: as many as needed.</summary>
+    [JsonPropertyName("maxResumesPerRaid")]
+    public int MaxResumesPerRaid { get; init; }
+
+    /// <summary>
+    /// A raid cut with the head or the thorax under this share of its health, in percent, cannot be resumed.
+    /// 0: never blocked.
+    /// </summary>
+    [JsonPropertyName("blockResumeUnderVitalHealthPercent")]
+    public int BlockResumeUnderVitalHealthPercent { get; init; }
+
+    [JsonIgnore]
+    public int ResumeLimit => Math.Clamp(MaxResumesPerRaid, 0, 100);
+
+    [JsonIgnore]
+    public int VitalHealthFloor => Math.Clamp(BlockResumeUnderVitalHealthPercent, 0, 100);
+
     /// <summary>
     /// Reads config.json in the mod folder. A missing or invalid file must not prevent
     /// the server from starting: we fall back to the defaults and report the reason.

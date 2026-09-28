@@ -8,7 +8,8 @@ namespace RaidRecovery.Server.Services;
 /// <param name="Removed">Items already taken, removed from the replacement.</param>
 /// <param name="Corpses">Bodies added to the replacement.</param>
 /// <param name="SecondsLeft">Time left in the interrupted raid, if its bots are to be restored as well.</param>
-public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Removed, int Corpses = 0, int? SecondsLeft = null)
+/// <param name="BotsInSnapshot">Bots the snapshot stands for, alive or dead.</param>
+public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Removed, int Corpses = 0, int? SecondsLeft = null, int BotsInSnapshot = 0)
 {
     /// <summary>true if the raid starts with the loot of the interrupted raid instead of new loot.</summary>
     public bool Replayed => Replacement is not null;
@@ -18,7 +19,8 @@ public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Rem
 /// <param name="InventoryIds">Everything the player carries: what comes from the map's loot is removed from it.</param>
 /// <param name="Corpses">Bodies on the map, each as the JSON the game wrote. They replace those of the previous recovery.</param>
 /// <param name="SecondsLeft">Set only when the snapshot holds the bots: the spawns already played are then dropped.</param>
-public sealed record RecoveryTicket(IEnumerable<string> InventoryIds, IReadOnlyList<string>? Corpses = null, int? SecondsLeft = null);
+/// <param name="BotsAlive">Bots alive in the snapshot. With the bodies, they are the bots the map must not spawn again.</param>
+public sealed record RecoveryTicket(IEnumerable<string> InventoryIds, IReadOnlyList<string>? Corpses = null, int? SecondsLeft = null, int BotsAlive = 0);
 
 /// <summary>
 /// SPT draws new loot at every raid start. For a resumed raid to find its crates as they were left, we keep the
@@ -31,7 +33,7 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
 
     // Profile -> raid about to be resumed. In memory only: the recovery and the raid start that
     // follows are a few seconds apart. If the server restarts in between, the raid gets new loot.
-    private readonly Dictionary<string, (string Map, int? SecondsLeft)> _armed = [];
+    private readonly Dictionary<string, (string Map, int? SecondsLeft, int Bots)> _armed = [];
 
     /// <summary>
     /// A recovery was just applied: the next raid start on this map is a resume.
@@ -49,8 +51,22 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
             var notes = store.ReadNotes(profileId);
             var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
             taken.UnionWith(ticket.InventoryIds);
-            store.WriteNotes(profileId, new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []]));
-            _armed[profileId] = (map, ticket.SecondsLeft);
+            store.WriteNotes(profileId, new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []], notes.Resumes + 1));
+            _armed[profileId] = (map, ticket.SecondsLeft, ticket.BotsAlive + (ticket.Corpses?.Count ?? 0));
+        }
+    }
+
+    /// <summary>How many times the raid in progress was resumed. Back to zero as soon as a new raid starts.</summary>
+    public int ResumesDone(string profileId)
+    {
+        if (!SnapshotStore.IsValidProfileId(profileId))
+        {
+            return 0;
+        }
+
+        lock (_gate)
+        {
+            return store.ReadNotes(profileId).Resumes;
         }
     }
 
@@ -74,7 +90,7 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
                     var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
                     var replacement = LootFilter.WithoutTaken(stored.Loot, taken, out var removed);
                     var corpses = AddCorpses(replacement, notes.Corpses);
-                    return new LootDecision(replacement, removed, corpses, armed.SecondsLeft);
+                    return new LootDecision(replacement, removed, corpses, armed.SecondsLeft, armed.Bots);
                 }
             }
 

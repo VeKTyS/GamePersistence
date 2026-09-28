@@ -67,7 +67,10 @@ public class RaidRecoveryHost : IOnLoad
             _logger.Error("[RaidRecovery] Loot replay unavailable", ex);
         }
 
-        _logger.Success($"[RaidRecovery] Loaded. Snapshots in {StorageDirectory}, expiry {Config.MaxAge.TotalHours:0} h");
+        _logger.Success($"[RaidRecovery] Loaded. Snapshots in {StorageDirectory}, expiry {Config.MaxAge.TotalHours:0} h, "
+                + $"resumes per raid {(Config.ResumeLimit == 0 ? "unlimited" : Config.ResumeLimit.ToString())}, "
+                + $"blocked under {Config.VitalHealthFloor} % of vital health"
+        );
         return Task.CompletedTask;
     }
 }

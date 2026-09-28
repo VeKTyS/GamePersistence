@@ -12,31 +12,85 @@ public class WaveShiftTests
             Id = "factory4_day",
             Waves =
             [
-                new Wave { Number = 0, TimeMin = 0, TimeMax = 60 },
-                new Wave { Number = 1, TimeMin = 300, TimeMax = 420 },
-                new Wave { Number = 2, TimeMin = 900, TimeMax = 1000 },
+                new Wave { Number = 0, TimeMin = 0, TimeMax = 60, SlotsMin = 1 },
+                new Wave { Number = 1, TimeMin = 300, TimeMax = 420, SlotsMin = 2 },
+                new Wave { Number = 2, TimeMin = 900, TimeMax = 1000, SlotsMin = 1 },
             ],
             BossLocationSpawn =
             [
-                new BossLocationSpawn { BossName = "atStart", Time = -1 },
-                new BossLocationSpawn { BossName = "early", Time = 120 },
-                new BossLocationSpawn { BossName = "late", Time = 1200 },
+                new BossLocationSpawn { BossName = "atStart", Time = -1, BossEscortAmount = "0" },
+                new BossLocationSpawn { BossName = "early", Time = 120, BossEscortAmount = "1,2,2" },
+                new BossLocationSpawn { BossName = "late", Time = 1200, BossEscortAmount = "0" },
                 new BossLocationSpawn { BossName = "onSwitch", Time = -1, TriggerId = "switch-01", TriggerName = "interactObject" },
             ],
         };
     }
 
+    private static List<string?> Bosses(LocationBase map) => map.BossLocationSpawn!.Select(boss => boss.BossName).ToList();
+
     [Fact]
-    public void Spawns_already_played_are_removed()
+    public void Past_spawns_are_removed_when_the_snapshot_holds_their_bots()
     {
         var map = Map();
 
-        var result = WaveShift.Apply(map, 600);
+        // atStart 1 bot, early 1 + 1 escort, wave 0 one bot, wave 1 two bots: 6 bots
+        var result = WaveShift.Apply(map, 600, botsInSnapshot: 6);
 
-        Assert.Equal(2, result.WavesRemoved);
+        Assert.Equal(4, result.Removed);
+        Assert.Equal(0, result.Replayed);
+        Assert.Equal(["late", "onSwitch"], Bosses(map));
         Assert.Equal([2], map.Waves!.Select(wave => wave.Number));
-        Assert.Equal(2, result.BossSpawnsRemoved);
-        Assert.Equal(["late", "onSwitch"], map.BossLocationSpawn!.Select(boss => boss.BossName));
+    }
+
+    [Fact]
+    public void A_past_spawn_nobody_stands_for_is_played_again_at_once()
+    {
+        var map = Map();
+
+        // The case seen in game: 8 spawns due, 2 bots in the snapshot. Dropping the 8 emptied the map.
+        var result = WaveShift.Apply(map, 600, botsInSnapshot: 1);
+
+        Assert.Equal(1, result.Removed);
+        Assert.Equal(3, result.Replayed);
+        Assert.Equal(["early", "late", "onSwitch"], Bosses(map));
+        Assert.Equal(-1, map.BossLocationSpawn!.Single(boss => boss.BossName == "early").Time);
+        Assert.Equal([0, 0, 300], map.Waves!.Select(wave => wave.TimeMin));
+    }
+
+    [Fact]
+    public void A_wave_played_again_keeps_its_length()
+    {
+        var map = Map();
+
+        WaveShift.Apply(map, 600, botsInSnapshot: 0);
+
+        var wave = map.Waves!.Single(item => item.Number == 1);
+        Assert.Equal(0, wave.TimeMin);
+        Assert.Equal(120, wave.TimeMax);
+    }
+
+    [Fact]
+    public void An_empty_snapshot_removes_nothing()
+    {
+        var map = Map();
+
+        var result = WaveShift.Apply(map, 600, botsInSnapshot: 0);
+
+        Assert.Equal(0, result.Removed);
+        Assert.Equal(4, map.BossLocationSpawn!.Count);
+        Assert.Equal(3, map.Waves!.Count);
+    }
+
+    [Fact]
+    public void A_spawn_too_big_for_the_bots_left_is_kept()
+    {
+        var map = Map();
+
+        // atStart takes one bot, one is left: not enough for early and its escort
+        WaveShift.Apply(map, 600, botsInSnapshot: 2);
+
+        Assert.Contains("early", Bosses(map));
+        Assert.DoesNotContain("atStart", Bosses(map));
     }
 
     [Fact]
@@ -44,8 +98,9 @@ public class WaveShiftTests
     {
         var map = Map();
 
-        WaveShift.Apply(map, 600);
+        var result = WaveShift.Apply(map, 600, botsInSnapshot: 6);
 
+        Assert.Equal(2, result.Shifted);
         var wave = Assert.Single(map.Waves!);
         Assert.Equal(300, wave.TimeMin);
         Assert.Equal(400, wave.TimeMax);
@@ -57,7 +112,7 @@ public class WaveShiftTests
     {
         var map = Map();
 
-        WaveShift.Apply(map, 600);
+        WaveShift.Apply(map, 600, botsInSnapshot: 50);
 
         var boss = map.BossLocationSpawn!.Single(spawn => spawn.BossName == "onSwitch");
         Assert.Equal(-1, boss.Time);
@@ -68,12 +123,12 @@ public class WaveShiftTests
     {
         var map = Map();
 
-        var result = WaveShift.Apply(map, 0);
+        var result = WaveShift.Apply(map, 0, botsInSnapshot: 6);
 
-        Assert.Equal(0, result.WavesRemoved);
-        Assert.Equal(0, result.BossSpawnsRemoved);
+        Assert.Equal(0, result.Removed);
         Assert.Equal(3, map.Waves!.Count);
         Assert.Equal(4, map.BossLocationSpawn!.Count);
+        Assert.Equal([0, 300, 900], map.Waves!.Select(wave => wave.TimeMin));
     }
 
     [Fact]
@@ -81,7 +136,7 @@ public class WaveShiftTests
     {
         var map = Map();
 
-        WaveShift.Apply(map, -30);
+        WaveShift.Apply(map, -30, botsInSnapshot: 6);
 
         Assert.Equal([0, 300, 900], map.Waves!.Select(wave => wave.TimeMin));
     }
@@ -89,8 +144,8 @@ public class WaveShiftTests
     [Fact]
     public void A_map_without_spawns_does_not_fail()
     {
-        var result = WaveShift.Apply(new LocationBase { Id = "factory4_day" }, 600);
+        var result = WaveShift.Apply(new LocationBase { Id = "factory4_day" }, 600, botsInSnapshot: 3);
 
-        Assert.Equal(new WaveShiftResult(0, 0, 0, 0), result);
+        Assert.Equal(new WaveShiftResult(0, 0, 0), result);
     }
 }

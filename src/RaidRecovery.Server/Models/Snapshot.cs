@@ -56,6 +56,13 @@ public record PlayerState
     /// </summary>
     [JsonPropertyName("profile")]
     public JsonElement? Profile { get; init; }
+
+    /// <summary>
+    /// Statistics of the raid so far. Kept apart from the profile: the server applies the profile and would
+    /// have to understand them, whereas they only matter to the game, inside the resumed raid.
+    /// </summary>
+    [JsonPropertyName("stats")]
+    public JsonElement? Stats { get; init; }
 }
 
 public record Position

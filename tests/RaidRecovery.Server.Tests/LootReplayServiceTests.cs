@@ -222,11 +222,39 @@ public class LootReplayServiceTests
     public void The_time_left_travels_with_the_recovery_when_the_snapshot_holds_the_bots()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], null, 1380));
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001"], 1380, BotsAlive: 4));
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
         Assert.Equal(1380, decision.SecondsLeft);
+        // Four alive and one body: five bots the map must not spawn again
+        Assert.Equal(5, decision.BotsInSnapshot);
+    }
+
+    [Fact]
+    public void Each_recovery_of_a_raid_is_counted()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        Assert.Equal(0, _service.ResumesDone(Samples.ProfileId));
+
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([]));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([]));
+
+        Assert.Equal(2, _service.ResumesDone(Samples.ProfileId));
+    }
+
+    [Fact]
+    public void A_new_raid_starts_the_count_of_recoveries_again()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([]));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // No recovery before this start: it is a new raid
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+
+        Assert.Equal(0, _service.ResumesDone(Samples.ProfileId));
     }
 
     [Fact]

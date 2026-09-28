@@ -43,6 +43,11 @@ namespace RaidRecovery.Client.Recovery
 
         // Margin after the timer starts, to let the game finish placing the player
         private const float PlacementDelaySeconds = 0.5f;
+        // Long enough for every bot to be loaded, activated and to have looked around
+        private const float DiagnosticsDelaySeconds = 45f;
+        private GameWorld _diagnosticsWorld;
+        private float _diagnosticsAt;
+
         private RestoreResult _placement;
         private GameWorld _placementWorld;
         private float _placeAt;
@@ -196,12 +201,30 @@ namespace RaidRecovery.Client.Recovery
 
             // After the game's own start: doors and extractions are initialized by then
             WorldRestorer.Apply(world, player, ticket.World);
+            try
+            {
+                StatsRestorer.Apply(player, ticket.Stats?.ToString());
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Could not restore the raid statistics: {ex}");
+            }
+
             RaidLauncher.Watch(BotsRestorer.ApplyAsync(ticket.Bots), "Putting the bots back");
+            _diagnosticsWorld = world;
+            _diagnosticsAt = Time.unscaledTime + DiagnosticsDelaySeconds;
             Notify("Raid resumed: gear, health, position, map and bots restored");
         }
 
         private void Update()
         {
+            if (_diagnosticsWorld != null && Time.unscaledTime >= _diagnosticsAt)
+            {
+                var world = _diagnosticsWorld;
+                _diagnosticsWorld = null;
+                BotsDiagnostics.Log(world, BotsRestorer.RestoredIds);
+            }
+
             try
             {
                 PlaceWhenRaidRuns();
@@ -282,8 +305,15 @@ namespace RaidRecovery.Client.Recovery
                 if (!pending.Restorable)
                 {
                     // Snapshot without a character (scav raid, capture from an older version): nothing to offer
-                    Plugin.Log.LogWarning("This snapshot does not hold what is needed to restore the character, it is discarded");
+                    Plugin.Log.LogWarning($"This raid cannot be resumed ({pending.Reason ?? "nothing to restore the character from"}), its snapshot is discarded");
                     await RecoveryApi.DiscardAsync().ConfigureAwait(false);
+                    // A rule of the server refused it: the player is told why, a missing character is not their concern
+                    if (pending.Reason != null)
+                    {
+                        var reason = pending.Reason;
+                        _mainThread.Enqueue(() => Notify(Explain(reason)));
+                    }
+
                     return;
                 }
 
@@ -390,6 +420,19 @@ namespace RaidRecovery.Client.Recovery
             _offer = null;
             _step = Step.Idle;
             Notify(message);
+        }
+
+        private static string Explain(string reason)
+        {
+            switch (reason)
+            {
+                case "TooManyResumes":
+                    return "Raid not resumed: it was already resumed as many times as the server allows.";
+                case "DeathWasImminent":
+                    return "Raid not resumed: your character was about to die when it was cut.";
+                default:
+                    return $"Raid not resumed: {reason}";
+            }
         }
 
         private static void Notify(string message)

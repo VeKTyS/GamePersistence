@@ -1,3 +1,4 @@
+using System.Reflection;
 using RaidRecovery.Server.Models;
 using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
@@ -9,6 +10,7 @@ using SPTarkov.Server.Core.Models.Eft.Common.Tables;
 using SPTarkov.Server.Core.Models.Enums;
 using SPTarkov.Server.Core.Models.Spt.Tables;
 using SPTarkov.Server.Core.Servers;
+using SPTarkov.Server.Core.Services.InRaid;
 using SPTarkov.Server.Core.Utils;
 
 namespace RaidRecovery.Server.Services;
@@ -25,7 +27,8 @@ public class ProfileRestorer(
     InRaidHelper inRaidHelper,
     HealthHelper healthHelper,
     SaveServer saveServer,
-    TemplateTable templateTable
+    TemplateTable templateTable,
+    LocationLifecycleService raidLifecycle
 )
 {
     public const string PmcSide = "Pmc";
@@ -97,6 +100,8 @@ public class ProfileRestorer(
                 profile.TaskConditionCounters = captured.TaskConditionCounters;
             }
 
+            ApplyProgress(sessionId, profile, captured);
+
             await saveServer.SaveProfileAsync(sessionId, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -110,6 +115,86 @@ public class ProfileRestorer(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The rest of what SPT keeps from a raid (HandlePostRaidPmc), in the same order. Each part is absent from
+    /// snapshots taken before version 0.8.0, and is then left as it is in the profile.
+    /// Left out on purpose: experience, level and statistics. The game works them out at the true end of the
+    /// raid from the counters of the session, which the client carries into the resumed raid; applying them
+    /// here as well would count the first half of the raid twice.
+    /// </summary>
+    private void ApplyProgress(MongoId sessionId, PmcData profile, PmcData captured)
+    {
+        if (captured.Skills is not null)
+        {
+            profile.Skills = captured.Skills;
+        }
+
+        if (captured.Achievements is not null)
+        {
+            // Rewards first: SPT finds the new achievements by comparing with those still in the profile.
+            // Without its function we keep the old list, so the true end of the raid still hands the rewards out.
+            var fullProfile = profileHelper.GetFullProfile(sessionId);
+            if (fullProfile is not null && CallRaidEnd("ProcessAchievementRewards", fullProfile, captured.Achievements))
+            {
+                profile.Achievements = captured.Achievements;
+            }
+        }
+
+        if (captured.WishList is not null)
+        {
+            profile.WishList = captured.WishList;
+        }
+
+        if (captured.Variables is not null)
+        {
+            profile.Variables = captured.Variables;
+        }
+
+        if (captured.TradersInfo is not null && profile.TradersInfo is not null)
+        {
+            CallRaidEnd("ApplyTraderStandingAdjustments", profile.TradersInfo, captured.TradersInfo);
+        }
+
+        if (captured.CheckedMagazines is not null)
+        {
+            profile.CheckedMagazines = captured.CheckedMagazines;
+        }
+
+        if (captured.CheckedChambers is not null)
+        {
+            profile.CheckedChambers = captured.CheckedChambers;
+        }
+    }
+
+    /// <summary>
+    /// Calls one of the functions SPT runs at the end of a raid. They are protected, so out of reach by a normal
+    /// call; copying them here would drift at the first SPT update. Returns false if SPT no longer has it.
+    /// </summary>
+    private bool CallRaidEnd(string method, params object[] arguments)
+    {
+        try
+        {
+            var target = typeof(LocationLifecycleService).GetMethod(
+                method,
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                arguments.Select(argument => argument.GetType()).ToArray()
+            );
+            if (target is null)
+            {
+                logger.Warning($"[RaidRecovery] SPT no longer has {method}: this part of the raid is not restored");
+                return false;
+            }
+
+            target.Invoke(raidLifecycle, arguments);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.Error($"[RaidRecovery] {method} failed: this part of the raid is not restored", ex);
+            return false;
+        }
     }
 
     /// <summary>

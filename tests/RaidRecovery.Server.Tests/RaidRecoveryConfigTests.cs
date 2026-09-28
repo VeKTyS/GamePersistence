@@ -44,6 +44,32 @@ public sealed class RaidRecoveryConfigTests : IDisposable
         Assert.NotNull(warning);
     }
 
+    [Fact]
+    public void The_two_resume_rules_are_off_unless_asked_for()
+    {
+        WriteConfig("""{ "maxAgeHours": 6 }""");
+
+        var config = RaidRecoveryConfig.Load(_temp.Path, out _);
+
+        Assert.Equal(0, config.ResumeLimit);
+        Assert.Equal(0, config.VitalHealthFloor);
+    }
+
+    [Theory]
+    [InlineData(-3, 0, 0)]
+    [InlineData(2, 2, 15)]
+    [InlineData(5000, 100, 100)]
+    public void The_resume_rules_are_read_and_clamped(int configured, int expectedLimit, int expectedFloor)
+    {
+        var floor = configured == 2 ? 15 : configured;
+        WriteConfig($$"""{ "maxResumesPerRaid": {{configured}}, "blockResumeUnderVitalHealthPercent": {{floor}} }""");
+
+        var config = RaidRecoveryConfig.Load(_temp.Path, out _);
+
+        Assert.Equal(expectedLimit, config.ResumeLimit);
+        Assert.Equal(expectedFloor, config.VitalHealthFloor);
+    }
+
     [Theory]
     [InlineData(0, 1)]
     [InlineData(-5, 1)]

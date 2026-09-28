@@ -1,8 +1,4 @@
-using System.Collections.Generic;
-using System.Linq;
 using EFT;
-using EFT.Quests;
-using Newtonsoft.Json;
 using UnityEngine;
 
 namespace RaidRecovery.Client.Raid
@@ -13,33 +9,35 @@ namespace RaidRecovery.Client.Raid
     /// </summary>
     internal sealed class CharacterCapture
     {
-        private CapturedProfile _profile;
+        private ProfileDescriptor _profile;
 
         public Vector3 Position { get; private set; }
 
         public Vector2 Rotation { get; private set; }
 
+        /// <summary>
+        /// Statistics of the raid so far, already as JSON: their lists are the ones the game keeps writing to,
+        /// so they are serialized here, on the main thread, and not later on another one.
+        /// </summary>
+        public string StatsJson { get; private set; }
+
         public static CharacterCapture Take(Player player)
         {
+            // The whole profile, built the way the game does it at the end of a raid (BaseLocalGame.GameEnd):
+            // skills, quests, achievements, examined items, traders... This is exactly the shape the server
+            // already knows how to read, and nothing of the raid is left aside.
+            var profile = new ProfileDescriptor(player.Profile, FullySearchedSearchController.Instance);
+            // The profile holds the health of the start of the raid, the controller holds the current one
+            profile.Health = player.ActiveHealthController.Store();
+            // Sent apart, see StatsJson: left here, they would be serialized on another thread while the game writes to them
+            profile.Stats = new ProfileStatsSeparatorDescriptor();
+
             return new CharacterCapture
             {
                 Position = player.Position,
                 Rotation = player.Rotation,
-                _profile = new CapturedProfile
-                {
-                    // The same two calls as the game at the end of a raid (BaseLocalGame.GameEnd):
-                    // this gives exactly the shape the server already knows how to read.
-                    Inventory = new InventoryDescriptor(player.Profile.Inventory, FullySearchedSearchController.Instance),
-                    Health = player.ActiveHealthController.Store(),
-                    // Copy: the game's dictionary keeps changing while we serialize on another thread
-                    Encyclopedia = new Dictionary<MongoID, bool>(player.Profile.Encyclopedia),
-                    // Same conversions as the ProfileDescriptor constructor
-                    Quests = player.Profile.QuestsData.ToList(),
-                    TaskConditionCounters = player.Profile.TaskConditionCounters?.ToDictionary(
-                        pair => pair.Key,
-                        pair => new TaskConditionCounterDescriptor(pair.Value)
-                    ),
-                },
+                StatsJson = player.Profile.Stats == null ? null : new ProfileStatsSeparatorDescriptor(player.Profile.Stats).ToJson(),
+                _profile = profile,
             };
         }
 
@@ -47,25 +45,6 @@ namespace RaidRecovery.Client.Raid
         public string ToJson()
         {
             return _profile.ToJson();
-        }
-
-        private sealed class CapturedProfile
-        {
-            [JsonProperty("Inventory")]
-            public InventoryDescriptor Inventory;
-
-            [JsonProperty("Health")]
-            public Profile.HealthInfo Health;
-
-            /// <summary>Items already examined: without them, the restored loot shows up as unknown again.</summary>
-            [JsonProperty("Encyclopedia")]
-            public Dictionary<MongoID, bool> Encyclopedia;
-
-            [JsonProperty("Quests", NullValueHandling = NullValueHandling.Ignore)]
-            public List<QuestDataClass> Quests;
-
-            [JsonProperty("TaskConditionCounters", NullValueHandling = NullValueHandling.Ignore)]
-            public Dictionary<MongoID, TaskConditionCounterDescriptor> TaskConditionCounters;
         }
     }
 }

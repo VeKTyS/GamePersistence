@@ -37,10 +37,22 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 - Position and view direction
 - Remaining raid time and time of day
 - Quest progress and examined items
+- Skills, achievements, trader standing, wish list
+- Kills, experience and counters of the raid so far
 - Map loot: the resumed raid gets the loot of the interrupted raid, without the items you already took
 - Opened doors, used switches, open or closed extractions, containers already searched
 - Bots that were alive, with their gear, health and position
 - Bodies left on the map, with what they carried
+
+## Server settings
+
+In `user/mods/RaidRecovery/config.json`:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `maxAgeHours` | 24 | A snapshot older than this is ignored and deleted |
+| `maxResumesPerRaid` | 0 | How many times one raid may be resumed. 0: no limit |
+| `blockResumeUnderVitalHealthPercent` | 0 | A raid cut with the head or thorax under this share of its health cannot be resumed. 0: never blocked |
 
 ## Known bugs and limitations
 
@@ -62,7 +74,8 @@ These are not handled yet and are planned for later versions.
 - **Progress since the last snapshot is lost.** A snapshot is taken every 30 seconds by default, so up to
   that much progress can be missing.
 - **Closing the game on purpose also triggers a recovery.** Alt+F4 just before dying brings back the state of
-  the last snapshot. There is no limit yet on how many times a raid can be resumed.
+  the last snapshot. Two server settings can refuse such a recovery (see below), but a refused raid only
+  sends you back to the profile you had before it: you lose nothing.
 - **A crash while the resumed raid is loading loses the recovery.** The snapshot is consumed as soon as it is
   applied to the profile.
 - **The raid preparation screen is skipped on relaunch.** Mods that hook into that screen do not run for the

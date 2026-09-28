@@ -13,7 +13,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.6.1";
+        public const string Version = "0.9.0";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;

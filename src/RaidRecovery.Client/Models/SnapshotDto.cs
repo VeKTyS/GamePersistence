@@ -121,6 +121,10 @@ namespace RaidRecovery.Client.Models
         /// </summary>
         [JsonProperty("profile")]
         public JRaw Profile { get; set; }
+
+        /// <summary>Kills, experience and counters of the raid so far, serialized by the game.</summary>
+        [JsonProperty("stats", NullValueHandling = NullValueHandling.Ignore)]
+        public JRaw Stats { get; set; }
     }
 
     internal sealed class PositionDto
@@ -182,6 +186,9 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("restorable")]
         public bool Restorable { get; set; }
+
+        [JsonProperty("reason")]
+        public string Reason { get; set; }
     }
 
     internal sealed class RestoreResult
@@ -212,5 +219,8 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("bots")]
         public List<BotDto> Bots { get; set; }
+
+        [JsonProperty("stats")]
+        public JRaw Stats { get; set; }
     }
 }

@@ -18,8 +18,12 @@ namespace RaidRecovery.Client.Recovery
         /// One bot after the other: each has to load its look and gear before the game can build it.
         /// Runs on the main thread, the waits hand the frame back to the game.
         /// </summary>
+        /// <summary>Profiles of the bots put back in the raid in progress, to tell them from those the game spawned.</summary>
+        public static readonly HashSet<string> RestoredIds = new HashSet<string>();
+
         public static async Task ApplyAsync(List<BotDto> bots)
         {
+            RestoredIds.Clear();
             if (bots == null || bots.Count == 0)
             {
                 return;
@@ -87,7 +91,8 @@ namespace RaidRecovery.Client.Recovery
                 return false;
             }
 
-            var request = new GetProfileDataParams((EPlayerSide)bot.Side, (WildSpawnType)bot.Role, (BotDifficulty)bot.Difficulty, 0f, null, false);
+            // Never null: the game reads the spawn parameters of a boss without checking them
+            var request = new GetProfileDataParams((EPlayerSide)bot.Side, (WildSpawnType)bot.Role, (BotDifficulty)bot.Difficulty, 0f, new BotSpawnParams(), false);
             var data = BotCreationData.CreateWithoutProfile(request);
             data.AddProfile(profile);
             data.AddPosition(position, corePoint.Id);
@@ -110,6 +115,7 @@ namespace RaidRecovery.Client.Recovery
                         owner.GetPlayer.Rotation = new Vector2(rotation.Yaw, rotation.Pitch);
                     }
 
+                    RestoredIds.Add(owner.GetPlayer.ProfileId);
                     Plugin.Log.LogInfo($"Bot back in the raid: {owner.Profile.Nickname} at {owner.GetPlayer.Position}");
                 },
                 spawner._cancellationTokenSource.Token
