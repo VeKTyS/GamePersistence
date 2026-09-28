@@ -8,7 +8,7 @@ namespace RaidRecovery.Server.Tests;
 public sealed class MemoryLootStore : ILootStore
 {
     private readonly Dictionary<string, StoredLoot> _loot = [];
-    private readonly Dictionary<string, List<string>> _taken = [];
+    private readonly Dictionary<string, RecoveryNotes> _notes = [];
 
     public int LootWrites { get; private set; }
 
@@ -20,16 +20,16 @@ public sealed class MemoryLootStore : ILootStore
 
     public StoredLoot? ReadLoot(string profileId) => _loot.GetValueOrDefault(profileId);
 
-    public void WriteTaken(string profileId, IReadOnlyCollection<string> ids) => _taken[profileId] = [.. ids];
+    public void WriteNotes(string profileId, RecoveryNotes notes) => _notes[profileId] = notes;
 
-    public IReadOnlyCollection<string> ReadTaken(string profileId) => _taken.GetValueOrDefault(profileId) ?? [];
+    public RecoveryNotes ReadNotes(string profileId) => _notes.GetValueOrDefault(profileId) ?? RecoveryNotes.Empty;
 
-    public void DeleteTaken(string profileId) => _taken.Remove(profileId);
+    public void DeleteNotes(string profileId) => _notes.Remove(profileId);
 
     public void Delete(string profileId)
     {
         _loot.Remove(profileId);
-        _taken.Remove(profileId);
+        _notes.Remove(profileId);
     }
 }
 

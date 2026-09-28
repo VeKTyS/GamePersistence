@@ -2,8 +2,16 @@ using SPTarkov.Server.Core.Models.Eft.Common;
 
 namespace RaidRecovery.Server.Storage;
 
-/// <summary>Loot of the raid in progress, as the server generated it, with what the player took from it.</summary>
+/// <summary>Loot of the raid in progress, as the server generated it.</summary>
 public sealed record StoredLoot(string Map, List<SpawnpointTemplate> Loot);
+
+/// <summary>What the recoveries of a raid taught us about its loot.</summary>
+/// <param name="Taken">Identifiers of the items the player took. They add up from one recovery to the next.</param>
+/// <param name="Corpses">Bodies lying on the map at the last snapshot, each as the JSON the game wrote.</param>
+public sealed record RecoveryNotes(List<string> Taken, List<string> Corpses)
+{
+    public static RecoveryNotes Empty => new([], []);
+}
 
 public interface ILootStore
 {
@@ -12,12 +20,13 @@ public interface ILootStore
     /// <summary>null if nothing is stored or if the file is unreadable.</summary>
     StoredLoot? ReadLoot(string profileId);
 
-    void WriteTaken(string profileId, IReadOnlyCollection<string> ids);
+    void WriteNotes(string profileId, RecoveryNotes notes);
 
-    IReadOnlyCollection<string> ReadTaken(string profileId);
+    /// <summary>Empty notes if nothing is stored or if the file is unreadable.</summary>
+    RecoveryNotes ReadNotes(string profileId);
 
-    /// <summary>Deletes only the list of taken items: a new raid starts with loot nobody touched.</summary>
-    void DeleteTaken(string profileId);
+    /// <summary>Deletes only the notes: a new raid starts with loot nobody touched.</summary>
+    void DeleteNotes(string profileId);
 
     void Delete(string profileId);
 }

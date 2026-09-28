@@ -28,12 +28,65 @@ namespace RaidRecovery.Client.Models
         [JsonProperty("player")]
         public PlayerDto Player { get; set; }
 
-        // Filled starting with milestones L2 and L3
         [JsonProperty("world")]
-        public Dictionary<string, object> World { get; set; } = new Dictionary<string, object>();
+        public WorldDto World { get; set; } = new WorldDto();
 
+        /// <summary>
+        /// Bots alive at the snapshot. null when their capture is turned off: the server then leaves the
+        /// spawns of the map as they are, instead of dropping those it believes we restore.
+        /// </summary>
         [JsonProperty("bots")]
-        public List<object> Bots { get; set; } = new List<object>();
+        public List<BotDto> Bots { get; set; }
+    }
+
+    internal sealed class BotDto
+    {
+        [JsonProperty("position")]
+        public PositionDto Position { get; set; }
+
+        [JsonProperty("rotation")]
+        public RotationDto Rotation { get; set; }
+
+        /// <summary>Values of the game's enumerations: EPlayerSide, WildSpawnType, BotDifficulty.</summary>
+        [JsonProperty("side")]
+        public int Side { get; set; }
+
+        [JsonProperty("role")]
+        public int Role { get; set; }
+
+        [JsonProperty("difficulty")]
+        public int Difficulty { get; set; }
+
+        /// <summary>Whole profile of the bot, gear and health included, serialized by the game.</summary>
+        [JsonProperty("profile")]
+        public JRaw Profile { get; set; }
+    }
+
+    /// <summary>State of the map around the player. Numbers are the values of the game's own enumerations.</summary>
+    internal sealed class WorldDto
+    {
+        /// <summary>Side of the map the player entered from. It decides which extractions are theirs.</summary>
+        [JsonProperty("entryPoint")]
+        public string EntryPoint { get; set; }
+
+        /// <summary>Doors, switches and the like: identifier to EDoorState.</summary>
+        [JsonProperty("objects")]
+        public Dictionary<string, byte> Objects { get; set; } = new Dictionary<string, byte>();
+
+        /// <summary>Extractions: name to EExfiltrationStatus.</summary>
+        [JsonProperty("exfils")]
+        public Dictionary<string, byte> Exfils { get; set; } = new Dictionary<string, byte>();
+
+        /// <summary>Identifiers of the containers the player already searched.</summary>
+        [JsonProperty("searched")]
+        public List<string> Searched { get; set; } = new List<string>();
+
+        /// <summary>
+        /// Bodies on the map, in the format the game reads in the loot of a raid. The server adds them
+        /// to the loot it serves again: the client has nothing to do at recovery.
+        /// </summary>
+        [JsonProperty("corpses", NullValueHandling = NullValueHandling.Ignore)]
+        public List<JRaw> Corpses { get; set; }
     }
 
     internal sealed class RaidDto
@@ -153,5 +206,11 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("rotation")]
         public RotationDto Rotation { get; set; }
+
+        [JsonProperty("world")]
+        public WorldDto World { get; set; }
+
+        [JsonProperty("bots")]
+        public List<BotDto> Bots { get; set; }
     }
 }

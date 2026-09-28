@@ -5,6 +5,7 @@ using RaidRecovery.Server.Storage;
 using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
+using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Utils;
 
 namespace RaidRecovery.Server;
@@ -33,7 +34,9 @@ public class RaidRecoveryHost : IOnLoad
 
         Service = new RaidRecoveryService(new SnapshotStore(StorageDirectory), TimeProvider.System, Config.MaxAge);
         Loot = new LootReplayService(
-            new LootStore(StorageDirectory, loot => jsonUtil.Serialize(loot), json => jsonUtil.Deserialize<StoredLoot>(json))
+            new LootStore(StorageDirectory, loot => jsonUtil.Serialize(loot), json => jsonUtil.Deserialize<StoredLoot>(json)),
+            // What the template does not declare (body shape, bones) lands in its extension data and leaves as it came
+            json => jsonUtil.Deserialize<SpawnpointTemplate>(json)
         );
     }
 

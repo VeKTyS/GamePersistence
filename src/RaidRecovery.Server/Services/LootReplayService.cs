@@ -4,29 +4,40 @@ using SPTarkov.Server.Core.Models.Eft.Common;
 namespace RaidRecovery.Server.Services;
 
 /// <summary>What was done with the loot SPT just generated.</summary>
-public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Removed)
+/// <param name="Replacement">Loot to serve instead, or null to keep the one SPT generated.</param>
+/// <param name="Removed">Items already taken, removed from the replacement.</param>
+/// <param name="Corpses">Bodies added to the replacement.</param>
+/// <param name="SecondsLeft">Time left in the interrupted raid, if its bots are to be restored as well.</param>
+public sealed record LootDecision(List<SpawnpointTemplate>? Replacement, int Removed, int Corpses = 0, int? SecondsLeft = null)
 {
     /// <summary>true if the raid starts with the loot of the interrupted raid instead of new loot.</summary>
     public bool Replayed => Replacement is not null;
 }
 
+/// <summary>What a recovery hands over for the raid start that follows it.</summary>
+/// <param name="InventoryIds">Everything the player carries: what comes from the map's loot is removed from it.</param>
+/// <param name="Corpses">Bodies on the map, each as the JSON the game wrote. They replace those of the previous recovery.</param>
+/// <param name="SecondsLeft">Set only when the snapshot holds the bots: the spawns already played are then dropped.</param>
+public sealed record RecoveryTicket(IEnumerable<string> InventoryIds, IReadOnlyList<string>? Corpses = null, int? SecondsLeft = null);
+
 /// <summary>
 /// SPT draws new loot at every raid start. For a resumed raid to find its crates as they were left, we keep the
-/// loot of the raid in progress and serve it again, minus what the player took.
+/// loot of the raid in progress and serve it again, minus what the player took, plus the bodies left behind.
 /// </summary>
-public sealed class LootReplayService(ILootStore store)
+/// <param name="parseCorpse">Reads a body written by the game. null if it cannot be read.</param>
+public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointTemplate?>? parseCorpse = null)
 {
     private readonly Lock _gate = new();
 
-    // Profile -> map of the raid about to be resumed. In memory only: the recovery and the raid start that
+    // Profile -> raid about to be resumed. In memory only: the recovery and the raid start that
     // follows are a few seconds apart. If the server restarts in between, the raid gets new loot.
-    private readonly Dictionary<string, string> _armed = [];
+    private readonly Dictionary<string, (string Map, int? SecondsLeft)> _armed = [];
 
     /// <summary>
     /// A recovery was just applied: the next raid start on this map is a resume.
     /// The taken items add up from one recovery to the next, so an item taken then used up does not come back.
     /// </summary>
-    public void Arm(string profileId, string map, IEnumerable<string> inventoryIds)
+    public void Arm(string profileId, string map, RecoveryTicket ticket)
     {
         if (!SnapshotStore.IsValidProfileId(profileId))
         {
@@ -35,10 +46,11 @@ public sealed class LootReplayService(ILootStore store)
 
         lock (_gate)
         {
-            var taken = new HashSet<string>(store.ReadTaken(profileId), StringComparer.OrdinalIgnoreCase);
-            taken.UnionWith(inventoryIds);
-            store.WriteTaken(profileId, taken);
-            _armed[profileId] = map;
+            var notes = store.ReadNotes(profileId);
+            var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
+            taken.UnionWith(ticket.InventoryIds);
+            store.WriteNotes(profileId, new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []]));
+            _armed[profileId] = (map, ticket.SecondsLeft);
         }
     }
 
@@ -52,20 +64,22 @@ public sealed class LootReplayService(ILootStore store)
 
         lock (_gate)
         {
-            var resuming = _armed.Remove(profileId, out var armedMap) && SameMap(armedMap, map);
+            var resuming = _armed.Remove(profileId, out var armed) && SameMap(armed.Map, map);
             if (resuming)
             {
                 var stored = store.ReadLoot(profileId);
                 if (stored is not null && SameMap(stored.Map, map))
                 {
-                    var taken = new HashSet<string>(store.ReadTaken(profileId), StringComparer.OrdinalIgnoreCase);
+                    var notes = store.ReadNotes(profileId);
+                    var taken = new HashSet<string>(notes.Taken, StringComparer.OrdinalIgnoreCase);
                     var replacement = LootFilter.WithoutTaken(stored.Loot, taken, out var removed);
-                    return new LootDecision(replacement, removed);
+                    var corpses = AddCorpses(replacement, notes.Corpses);
+                    return new LootDecision(replacement, removed, corpses, armed.SecondsLeft);
                 }
             }
 
             // New raid, or nothing usable to replay: this loot becomes the reference
-            store.DeleteTaken(profileId);
+            store.DeleteNotes(profileId);
             store.WriteLoot(profileId, new StoredLoot(map, generated));
             return new LootDecision(null, 0);
         }
@@ -84,6 +98,39 @@ public sealed class LootReplayService(ILootStore store)
             _armed.Remove(profileId);
             store.Delete(profileId);
         }
+    }
+
+    /// <summary>A body that cannot be read is skipped: one bad body must not cost the whole loot.</summary>
+    private int AddCorpses(List<SpawnpointTemplate> loot, List<string> corpses)
+    {
+        if (parseCorpse is null)
+        {
+            return 0;
+        }
+
+        var added = 0;
+        foreach (var json in corpses)
+        {
+            SpawnpointTemplate? corpse;
+            try
+            {
+                corpse = parseCorpse(json);
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            if (corpse?.Root is null || corpse.Items is null)
+            {
+                continue;
+            }
+
+            loot.Add(corpse);
+            added++;
+        }
+
+        return added;
     }
 
     private static bool SameMap(string? left, string? right)

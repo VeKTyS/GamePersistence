@@ -70,7 +70,7 @@ namespace RaidRecovery.Client.Recovery
         }
 
         /// <summary>These game tasks are started without being awaited: we at least log their failure.</summary>
-        private static void Watch(Task task, string label)
+        internal static void Watch(Task task, string label)
         {
             task.ContinueWith(
                 t => Plugin.Log.LogError($"{label} failed: {t.Exception?.GetBaseException()}"),

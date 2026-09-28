@@ -73,6 +73,8 @@ public class RaidRecoveryCallbacks(
                 SecondsLeft = snapshot.Raid?.SecondsLeft,
                 Position = snapshot.Player?.Position,
                 Rotation = snapshot.Player?.Rotation,
+                World = snapshot.World,
+                Bots = snapshot.Bots,
             }
         );
     }
@@ -146,7 +148,13 @@ public class RaidRecoveryCallbacks(
                 return;
             }
 
-            host.Loot.Arm(sessionId.ToString(), snapshot.Map, InventoryIds(snapshot));
+            // The spawns already played are only dropped when the snapshot holds the bots that came out of them
+            var holdsBots = snapshot.Bots is { ValueKind: JsonValueKind.Array };
+            host.Loot.Arm(
+                sessionId.ToString(),
+                snapshot.Map,
+                new RecoveryTicket(InventoryIds(snapshot), Corpses(snapshot), holdsBots ? snapshot.Raid?.SecondsLeft : null)
+            );
         }
         catch (Exception ex)
         {
@@ -178,6 +186,30 @@ public class RaidRecoveryCallbacks(
         }
 
         return ids;
+    }
+
+    /// <summary>Bodies on the map, each kept as the text the game wrote: the server does not interpret them.</summary>
+    internal static List<string> Corpses(Snapshot snapshot)
+    {
+        var corpses = new List<string>();
+        if (
+            snapshot.World is not { ValueKind: JsonValueKind.Object } world
+            || !world.TryGetProperty("corpses", out var list)
+            || list.ValueKind != JsonValueKind.Array
+        )
+        {
+            return corpses;
+        }
+
+        foreach (var corpse in list.EnumerateArray())
+        {
+            if (corpse.ValueKind == JsonValueKind.Object)
+            {
+                corpses.Add(corpse.GetRawText());
+            }
+        }
+
+        return corpses;
     }
 
     private ValueTask<string> Body<T>(T data)

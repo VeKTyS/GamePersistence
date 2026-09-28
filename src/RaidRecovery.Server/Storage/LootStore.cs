@@ -4,8 +4,8 @@ using SPTarkov.Server.Core.Models.Eft.Common;
 namespace RaidRecovery.Server.Storage;
 
 /// <summary>
-/// Two files per profile next to the snapshot: &lt;profile&gt;.loot.json, several megabytes, written once per raid,
-/// and &lt;profile&gt;.taken.json, small, rewritten at each recovery.
+/// Two files per profile next to the snapshot: &lt;profile&gt;.loot.json, written once per raid,
+/// and &lt;profile&gt;.notes.json, rewritten at each recovery.
 /// The loot goes through SPT's serializer: it is the one that knows how to write and read its own types.
 /// </summary>
 public sealed class LootStore(string directory, Func<StoredLoot, string?> serialize, Func<string, StoredLoot?> deserialize) : ILootStore
@@ -35,38 +35,39 @@ public sealed class LootStore(string directory, Func<StoredLoot, string?> serial
         }
     }
 
-    public void WriteTaken(string profileId, IReadOnlyCollection<string> ids)
+    public void WriteNotes(string profileId, RecoveryNotes notes)
     {
-        WriteAtomically(TakenPath(profileId), JsonSerializer.Serialize(ids));
+        WriteAtomically(NotesPath(profileId), JsonSerializer.Serialize(notes));
     }
 
-    public IReadOnlyCollection<string> ReadTaken(string profileId)
+    public RecoveryNotes ReadNotes(string profileId)
     {
-        var path = TakenPath(profileId);
+        var path = NotesPath(profileId);
         if (!File.Exists(path))
         {
-            return [];
+            return RecoveryNotes.Empty;
         }
 
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(File.ReadAllText(path)) ?? [];
+            var notes = JsonSerializer.Deserialize<RecoveryNotes>(File.ReadAllText(path));
+            return notes?.Taken is null || notes.Corpses is null ? RecoveryNotes.Empty : notes;
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            return [];
+            return RecoveryNotes.Empty;
         }
     }
 
-    public void DeleteTaken(string profileId)
+    public void DeleteNotes(string profileId)
     {
-        File.Delete(TakenPath(profileId));
+        File.Delete(NotesPath(profileId));
     }
 
     public void Delete(string profileId)
     {
         File.Delete(LootPath(profileId));
-        File.Delete(TakenPath(profileId));
+        File.Delete(NotesPath(profileId));
     }
 
     private void WriteAtomically(string path, string content)
@@ -80,7 +81,7 @@ public sealed class LootStore(string directory, Func<StoredLoot, string?> serial
 
     private string LootPath(string profileId) => BuildPath(profileId, ".loot.json");
 
-    private string TakenPath(string profileId) => BuildPath(profileId, ".taken.json");
+    private string NotesPath(string profileId) => BuildPath(profileId, ".notes.json");
 
     private string BuildPath(string profileId, string suffix)
     {

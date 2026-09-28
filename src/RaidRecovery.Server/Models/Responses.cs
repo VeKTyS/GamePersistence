@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace RaidRecovery.Server.Models;
@@ -58,6 +59,14 @@ public record RestoreResponse
 
     [JsonPropertyName("rotation")]
     public Rotation? Rotation { get; init; }
+
+    /// <summary>Doors, extractions, searched containers: handed back as the game sent them, the server does not read them.</summary>
+    [JsonPropertyName("world")]
+    public JsonElement? World { get; init; }
+
+    /// <summary>Bots alive at the snapshot, handed back as the game sent them.</summary>
+    [JsonPropertyName("bots")]
+    public JsonElement? Bots { get; init; }
 }
 
 public record DiscardResponse

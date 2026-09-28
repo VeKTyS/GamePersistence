@@ -137,6 +137,8 @@ namespace RaidRecovery.Client.Recovery
                 return;
             }
 
+            WorldRestorer.RestoreEntryPoint(ticket.World);
+
             // OnGameStarted fires before the countdown ends. The game then calls Spawn(), which puts the player back
             // on their spawn point: moving now would be overwritten. So we wait for the real start.
             _placement = ticket;
@@ -177,7 +179,8 @@ namespace RaidRecovery.Client.Recovery
             }
 
             var ticket = _placement;
-            var player = _placementWorld.MainPlayer;
+            var world = _placementWorld;
+            var player = world.MainPlayer;
             _placement = null;
             _placementWorld = null;
 
@@ -190,7 +193,11 @@ namespace RaidRecovery.Client.Recovery
             }
 
             Plugin.Log.LogInfo($"Player moved from {from} to {position}, position read afterwards: {player.Position}");
-            Notify("Raid resumed: gear, health and position restored");
+
+            // After the game's own start: doors and extractions are initialized by then
+            WorldRestorer.Apply(world, player, ticket.World);
+            RaidLauncher.Watch(BotsRestorer.ApplyAsync(ticket.Bots), "Putting the bots back");
+            Notify("Raid resumed: gear, health, position, map and bots restored");
         }
 
         private void Update()

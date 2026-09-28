@@ -23,6 +23,7 @@ namespace RaidRecovery.Client.Raid
     {
         public const string HideoutLocationId = "hideout";
 
+        private readonly WorldCapture _world = new WorldCapture();
         private GameWorld _gameWorld;
         private string _sessionId;
         private DateTime _startedAt;
@@ -170,6 +171,7 @@ namespace RaidRecovery.Client.Raid
             {
                 character = CharacterCapture.Take(player);
                 snapshot = Describe(player, character);
+                snapshot.World = _world.Take(_gameWorld, player);
             }
             catch (Exception ex)
             {
@@ -180,10 +182,24 @@ namespace RaidRecovery.Client.Raid
                 return true;
             }
 
+            // Apart from the rest: bots that cannot be read must not cost the snapshot of the player
+            BotsCapture bots = null;
+            if (Plugin.KeepBots.Value)
+            {
+                try
+                {
+                    bots = BotsCapture.Take(_gameWorld);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"Could not read the bots, the snapshot goes without them: {ex}");
+                }
+            }
+
             var readMs = stopwatch.Elapsed.TotalMilliseconds;
 
             // Serialization and send: off the main thread, so they do not cost a frame
-            Task.Run(() => SendAsync(snapshot, character, readMs, manual));
+            Task.Run(() => SendAsync(snapshot, character, bots, readMs, manual));
             return true;
         }
 
@@ -221,12 +237,18 @@ namespace RaidRecovery.Client.Raid
             return Math.Max(0, (int)timer.EscapeTimeSeconds());
         }
 
-        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, double readMs, bool manual)
+        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, BotsCapture bots, double readMs, bool manual)
         {
             try
             {
                 var stopwatch = Stopwatch.StartNew();
                 snapshot.Player.Profile = new JRaw(character.ToJson());
+                if (bots != null)
+                {
+                    snapshot.Bots = bots.BotsToDtos();
+                    snapshot.World.Corpses = bots.CorpsesToJson();
+                }
+
                 var json = JsonConvert.SerializeObject(snapshot);
                 var serializeMs = stopwatch.Elapsed.TotalMilliseconds;
 
@@ -253,7 +275,7 @@ namespace RaidRecovery.Client.Raid
                 {
                     var size = Encoding.UTF8.GetByteCount(json);
                     Plugin.Log.LogInfo(
-                        $"Snapshot saved{(manual ? " (on request)" : "")}: read {readMs:0.00} ms (main thread), serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes"
+                        $"Snapshot saved{(manual ? " (on request)" : "")}: read {readMs:0.00} ms (main thread), serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes, {bots?.BotCount ?? 0} bots, {bots?.CorpseCount ?? 0} bodies"
                     );
                 }
             }

@@ -45,8 +45,24 @@ public class LootGeneratedPatch : AbstractPatch
 
             __result.Loot = decision.Replacement!;
             Logger?.Success(
-                $"[RaidRecovery] Loot of the interrupted raid served again on {name}: {decision.Replacement!.Count} spawn points, {decision.Removed} items already taken removed"
+                $"[RaidRecovery] Loot of the interrupted raid served again on {name}: {decision.Replacement!.Count} spawn points, {decision.Removed} items already taken removed, {decision.Corpses} bodies put back"
             );
+
+            if (decision.SecondsLeft is { } secondsLeft && __result.EscapeTimeLimit is { } minutes)
+            {
+                var elapsed = (int)(minutes * 60) - secondsLeft;
+                if (elapsed <= 0)
+                {
+                    // More time left than the raid lasts: the snapshot and the map disagree, we touch nothing
+                    Logger?.Warning($"[RaidRecovery] Bot spawns left as they are: {secondsLeft} s left for a raid of {minutes} min");
+                    return;
+                }
+
+                var shift = WaveShift.Apply(__result, elapsed);
+                Logger?.Success(
+                    $"[RaidRecovery] Bot spawns moved {elapsed} s closer: {shift.WavesRemoved + shift.BossSpawnsRemoved} already played removed, {shift.WavesKept + shift.BossSpawnsKept} kept"
+                );
+            }
         }
         catch (Exception ex)
         {

@@ -13,7 +13,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.4.0";
+        public const string Version = "0.6.1";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;
@@ -29,6 +29,8 @@ namespace RaidRecovery.Client
         internal static ConfigEntry<bool> LogMeasurements { get; private set; }
 
         internal static ConfigEntry<bool> AutoLaunch { get; private set; }
+
+        internal static ConfigEntry<bool> KeepBots { get; private set; }
 
         private void Awake()
         {
@@ -81,12 +83,20 @@ namespace RaidRecovery.Client
                 "After \"Resume\", relaunches the raid on the same map. Otherwise, the raid has to be started by hand."
             );
 
+            KeepBots = Config.Bind(
+                "Recovery",
+                "Keep bots and bodies",
+                true,
+                "Saves the bots alive and the bodies on the map, and puts them back when the raid is resumed. When off, the resumed raid spawns new bots."
+            );
+
             RecoveryController.Create(gameObject);
 
             new RaidStartedPatch().Enable();
             new RaidStoppedPatch().Enable();
             new MenuShownPatch().Enable();
             new SessionTimePatch().Enable();
+            new CorpseAssetsPatch().Enable();
 
             Log.LogInfo($"Raid Recovery {Version} loaded");
         }

@@ -43,7 +43,7 @@ public class LootReplayServiceTests
     public void A_resumed_raid_gets_the_loot_of_the_interrupted_raid_minus_what_was_taken()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage, Loot.Wrench]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage, Loot.Wrench]));
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
@@ -67,7 +67,7 @@ public class LootReplayServiceTests
     public void A_recovery_is_served_once()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
         _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
@@ -79,7 +79,7 @@ public class LootReplayServiceTests
     public void A_raid_launched_on_another_map_gets_new_loot()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, "bigmap", OtherLoot());
 
@@ -91,11 +91,11 @@ public class LootReplayServiceTests
     public void Taken_items_add_up_over_several_recoveries()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
         _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
         // Second crash: the bandage was used up in the meantime, it is no longer in the inventory
-        _service.Arm(Samples.ProfileId, Map, [Loot.Wrench]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Wrench]));
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
         Assert.True(decision.Replayed);
@@ -107,7 +107,7 @@ public class LootReplayServiceTests
     public void A_resumed_raid_does_not_overwrite_the_stored_loot()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
 
         _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
@@ -119,19 +119,19 @@ public class LootReplayServiceTests
     public void A_new_raid_forgets_the_items_taken_in_the_previous_one()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
         _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
 
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
 
-        Assert.Empty(_store.ReadTaken(Samples.ProfileId));
+        Assert.Empty(_store.ReadNotes(Samples.ProfileId).Taken);
     }
 
     [Fact]
     public void Forgetting_a_raid_removes_its_loot_and_cancels_the_recovery()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
 
         _service.Forget(Samples.ProfileId);
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
@@ -142,7 +142,7 @@ public class LootReplayServiceTests
     [Fact]
     public void A_recovery_without_stored_loot_falls_back_to_new_loot()
     {
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
 
         var decision = _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
 
@@ -150,11 +150,98 @@ public class LootReplayServiceTests
         Assert.NotNull(_store.ReadLoot(Samples.ProfileId));
     }
 
+    /// <summary>Stand-in for SPT's serializer: a body is "corpse:&lt;id&gt;", anything else is unreadable.</summary>
+    private static SpawnpointTemplate? ParseCorpse(string json)
+    {
+        if (!json.StartsWith("corpse:"))
+        {
+            throw new FormatException("Not a body");
+        }
+
+        var id = json["corpse:".Length..];
+        return new SpawnpointTemplate { Id = "body-" + id, Root = id, Items = [Loot.Item(id)] };
+    }
+
+    [Fact]
+    public void Bodies_of_the_snapshot_are_added_to_the_replayed_loot()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001", "corpse:b00000000000000000000002"]));
+
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(2, decision.Corpses);
+        Assert.Equal(5, decision.Replacement!.Count);
+        Assert.Contains(decision.Replacement, spawnpoint => spawnpoint.Id == "body-b00000000000000000000001");
+    }
+
+    [Fact]
+    public void A_body_that_cannot_be_read_is_skipped_without_losing_the_loot()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["garbage", "corpse:b00000000000000000000001"]));
+
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.True(decision.Replayed);
+        Assert.Equal(1, decision.Corpses);
+        Assert.Equal(4, decision.Replacement!.Count);
+    }
+
+    [Fact]
+    public void Bodies_are_those_of_the_last_snapshot_only()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001"]));
+        service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // The second snapshot already lists every body of the map, the first one included
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000002"]));
+        var decision = service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(1, decision.Corpses);
+        Assert.DoesNotContain(decision.Replacement!, spawnpoint => spawnpoint.Id == "body-b00000000000000000000001");
+    }
+
+    [Fact]
+    public void Bodies_do_not_end_up_in_the_stored_loot()
+    {
+        var service = new LootReplayService(_store, ParseCorpse);
+        service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], ["corpse:b00000000000000000000001"]));
+
+        service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(3, _store.ReadLoot(Samples.ProfileId)!.Loot.Count);
+    }
+
+    [Fact]
+    public void The_time_left_travels_with_the_recovery_when_the_snapshot_holds_the_bots()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], null, 1380));
+
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(1380, decision.SecondsLeft);
+    }
+
+    [Fact]
+    public void A_new_raid_carries_no_time_left()
+    {
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+
+        Assert.Null(decision.SecondsLeft);
+    }
+
     [Fact]
     public void Profiles_do_not_share_their_loot()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
-        _service.Arm(Samples.ProfileId, Map, [Loot.Bandage]);
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage]));
 
         var decision = _service.OnLootGenerated(Samples.OtherProfileId, Map, OtherLoot());
 
