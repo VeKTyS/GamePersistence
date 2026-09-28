@@ -2,7 +2,9 @@ using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using RaidRecovery.Client.Patches;
+using RaidRecovery.Client.Raid;
 using RaidRecovery.Client.Recovery;
+using UnityEngine;
 
 namespace RaidRecovery.Client
 {
@@ -11,7 +13,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.3.0";
+        public const string Version = "0.3.1";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;
@@ -21,6 +23,8 @@ namespace RaidRecovery.Client
         internal static ConfigEntry<bool> Enabled { get; private set; }
 
         internal static ConfigEntry<int> IntervalSeconds { get; private set; }
+
+        internal static ConfigEntry<KeyboardShortcut> SaveNowKey { get; private set; }
 
         internal static ConfigEntry<bool> LogMeasurements { get; private set; }
 
@@ -40,6 +44,29 @@ namespace RaidRecovery.Client
                     new AcceptableValueRange<int>(MinIntervalSeconds, MaxIntervalSeconds)
                 )
             );
+            SaveNowKey = Config.Bind(
+                "Capture",
+                "Save now (shortcut)",
+                KeyboardShortcut.Empty,
+                "Takes a snapshot right away, without waiting for the next one. Only works during a raid."
+            );
+            // Holds no value: the entry only exists to show a button in the configuration menu
+            Config.Bind(
+                "Capture",
+                "Save now",
+                "",
+                new ConfigDescription(
+                    "Takes a snapshot right away, without waiting for the next one. Only works during a raid.",
+                    null,
+                    new ConfigurationManagerAttributes
+                    {
+                        CustomDrawer = DrawSaveNow,
+                        HideDefaultButton = true,
+                        Order = -1,
+                    }
+                )
+            );
+
             LogMeasurements = Config.Bind(
                 "Diagnostics",
                 "Log measurements",
@@ -62,6 +89,23 @@ namespace RaidRecovery.Client
             new SessionTimePatch().Enable();
 
             Log.LogInfo($"Raid Recovery {Version} loaded");
+        }
+
+        private static void DrawSaveNow(ConfigEntryBase entry)
+        {
+            var capturer = SnapshotCapturer.Current;
+            if (capturer == null)
+            {
+                GUILayout.Label("Not in a raid", GUILayout.ExpandWidth(true));
+                return;
+            }
+
+            if (GUILayout.Button("Save now", GUILayout.ExpandWidth(true)))
+            {
+                capturer.RequestCapture();
+            }
+
+            GUILayout.Label(capturer.LastSaveStatus, GUILayout.ExpandWidth(false));
         }
     }
 }

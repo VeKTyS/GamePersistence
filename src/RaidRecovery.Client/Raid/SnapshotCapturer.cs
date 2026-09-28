@@ -26,13 +26,18 @@ namespace RaidRecovery.Client.Raid
         private string _sessionId;
         private DateTime _startedAt;
         private string _dateTime;
-        private float _nextCaptureAt;
+        private float _lastCaptureAt;
+        private bool _capturedOnce;
+        private bool _captureRequested;
         private bool _stopped;
 
         // 0 = free, 1 = a send is in progress. Read and written from two threads, hence Interlocked.
         private int _sending;
 
         public static SnapshotCapturer Current { get; private set; }
+
+        /// <summary>Outcome of the last send, shown in the configuration menu. Written from the send thread.</summary>
+        public volatile string LastSaveStatus = "No snapshot yet";
 
         public static void Attach(GameWorld gameWorld)
         {
@@ -97,13 +102,33 @@ namespace RaidRecovery.Client.Raid
                 return;
             }
 
-            if (Time.unscaledTime < _nextCaptureAt)
+            if (Plugin.SaveNowKey.Value.IsDown())
+            {
+                _captureRequested = true;
+            }
+
+            // The interval is read again on every frame: a change in the menu applies to the wait in progress
+            var interval = Mathf.Clamp(Plugin.IntervalSeconds.Value, Plugin.MinIntervalSeconds, Plugin.MaxIntervalSeconds);
+            var due = !_capturedOnce || Time.unscaledTime >= _lastCaptureAt + interval;
+            if (!due && !_captureRequested)
             {
                 return;
             }
 
-            _nextCaptureAt = Time.unscaledTime + Mathf.Clamp(Plugin.IntervalSeconds.Value, Plugin.MinIntervalSeconds, Plugin.MaxIntervalSeconds);
-            Capture(player);
+            // A request made while a send is in progress stays pending and is served on a later frame
+            if (Capture(player, _captureRequested))
+            {
+                _captureRequested = false;
+                _capturedOnce = true;
+                _lastCaptureAt = Time.unscaledTime;
+            }
+        }
+
+        /// <summary>Asks for a snapshot right away. It is taken on the next frame, on the main thread.</summary>
+        public void RequestCapture()
+        {
+            _captureRequested = true;
+            LastSaveStatus = "Saving...";
         }
 
         private void OnDestroy()
@@ -115,13 +140,19 @@ namespace RaidRecovery.Client.Raid
             }
         }
 
-        private void Capture(Player player)
+        /// <summary>Returns false when nothing was captured, so the caller can try again.</summary>
+        private bool Capture(Player player, bool manual)
         {
             // A previous send is not finished: we skip this capture rather than piling up sends
             if (Interlocked.CompareExchange(ref _sending, 1, 0) != 0)
             {
-                Plugin.Log.LogWarning("Previous send still in progress, capture skipped");
-                return;
+                // A manual request is retried on every frame: logging here would flood the log
+                if (!manual)
+                {
+                    Plugin.Log.LogWarning("Previous send still in progress, capture skipped");
+                }
+
+                return !manual;
             }
 
             // Reading the game state: has to happen on the main thread, so it must stay as short as possible
@@ -137,13 +168,16 @@ namespace RaidRecovery.Client.Raid
             {
                 Interlocked.Exchange(ref _sending, 0);
                 Plugin.Log.LogError($"Could not read the raid state: {ex}");
-                return;
+                LastSaveStatus = "Failed, see the log";
+                // Counted as done: a read that fails would fail again on the next frame
+                return true;
             }
 
             var readMs = stopwatch.Elapsed.TotalMilliseconds;
 
             // Serialization and send: off the main thread, so they do not cost a frame
-            Task.Run(() => SendAsync(snapshot, character, readMs));
+            Task.Run(() => SendAsync(snapshot, character, readMs, manual));
+            return true;
         }
 
         private SnapshotDto Describe(Player player, CharacterCapture character)
@@ -180,7 +214,7 @@ namespace RaidRecovery.Client.Raid
             return Math.Max(0, (int)timer.EscapeTimeSeconds());
         }
 
-        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, double readMs)
+        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, double readMs, bool manual)
         {
             try
             {
@@ -202,14 +236,17 @@ namespace RaidRecovery.Client.Raid
                 if (result == null || !result.Saved)
                 {
                     Plugin.Log.LogWarning($"Snapshot not saved: {result?.Reason ?? "no response from the server"}");
+                    LastSaveStatus = "Failed, see the log";
                     return;
                 }
 
-                if (Plugin.LogMeasurements.Value)
+                LastSaveStatus = $"Saved at {DateTime.Now:HH:mm:ss}";
+                // A save asked by hand is always logged: it is the proof the player is looking for
+                if (manual || Plugin.LogMeasurements.Value)
                 {
                     var size = Encoding.UTF8.GetByteCount(json);
                     Plugin.Log.LogInfo(
-                        $"Snapshot saved: read {readMs:0.00} ms (main thread), serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes"
+                        $"Snapshot saved{(manual ? " (on request)" : "")}: read {readMs:0.00} ms (main thread), serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes"
                     );
                 }
             }
@@ -217,6 +254,7 @@ namespace RaidRecovery.Client.Raid
             {
                 // A failed send is dropped: the next one will replace it
                 Plugin.Log.LogWarning($"Sending the snapshot failed: {ex.Message}");
+                LastSaveStatus = "Failed, see the log";
             }
             finally
             {
