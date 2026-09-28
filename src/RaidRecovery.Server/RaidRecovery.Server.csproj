@@ -35,6 +35,15 @@
       <HintPath>$(SptServerPath)\SPTarkov.DI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Patching of SPT methods, provided by the server -->
+    <Reference Include="SPTarkov.Reflection">
+      <HintPath>$(SptServerPath)\SPTarkov.Reflection.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(SptServerPath)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="SemanticVersioning">
       <HintPath>$(SptServerPath)\SemanticVersioning.dll</HintPath>
       <Private>false</Private>

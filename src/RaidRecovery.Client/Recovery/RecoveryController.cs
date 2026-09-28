@@ -50,6 +50,12 @@ namespace RaidRecovery.Client.Recovery
         public static RecoveryController Instance { get; private set; }
 
         /// <summary>
+        /// True while the player of a resumed raid still stands on the spawn point chosen by the game.
+        /// A snapshot taken now would record that position instead of the restored one.
+        /// </summary>
+        public bool IsPlacementPending => _placement != null;
+
+        /// <summary>
         /// Attaches to the plugin's object, not to one we create: the game destroys the objects it does not know,
         /// and BepInEx hides its own (HideManagerGameObject) precisely to escape that.
         /// </summary>

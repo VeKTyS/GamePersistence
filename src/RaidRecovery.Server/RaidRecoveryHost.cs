@@ -1,9 +1,11 @@
 using System.Reflection;
+using RaidRecovery.Server.Patches;
 using RaidRecovery.Server.Services;
 using RaidRecovery.Server.Storage;
 using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
+using SPTarkov.Server.Core.Utils;
 
 namespace RaidRecovery.Server;
 
@@ -17,7 +19,7 @@ public class RaidRecoveryHost : IOnLoad
     private readonly ISptLogger<RaidRecoveryHost> _logger;
     private readonly string? _configWarning;
 
-    public RaidRecoveryHost(ISptLogger<RaidRecoveryHost> logger)
+    public RaidRecoveryHost(ISptLogger<RaidRecoveryHost> logger, JsonUtil jsonUtil)
     {
         _logger = logger;
 
@@ -30,9 +32,14 @@ public class RaidRecoveryHost : IOnLoad
         StorageDirectory = Path.Combine(userFolder, "raid-recovery");
 
         Service = new RaidRecoveryService(new SnapshotStore(StorageDirectory), TimeProvider.System, Config.MaxAge);
+        Loot = new LootReplayService(
+            new LootStore(StorageDirectory, loot => jsonUtil.Serialize(loot), json => jsonUtil.Deserialize<StoredLoot>(json))
+        );
     }
 
     public RaidRecoveryService Service { get; }
+
+    public LootReplayService Loot { get; }
 
     public RaidRecoveryConfig Config { get; }
 
@@ -43,6 +50,18 @@ public class RaidRecoveryHost : IOnLoad
         if (_configWarning is not null)
         {
             _logger.Warning($"[RaidRecovery] {_configWarning}");
+        }
+
+        try
+        {
+            LootGeneratedPatch.Service = Loot;
+            LootGeneratedPatch.Logger = _logger;
+            new LootGeneratedPatch().Enable();
+        }
+        catch (Exception ex)
+        {
+            // Without the patch, the rest of the mod still works: a resumed raid just gets new loot
+            _logger.Error("[RaidRecovery] Loot replay unavailable", ex);
         }
 
         _logger.Success($"[RaidRecovery] Loaded. Snapshots in {StorageDirectory}, expiry {Config.MaxAge.TotalHours:0} h");

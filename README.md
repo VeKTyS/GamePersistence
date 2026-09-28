@@ -37,14 +37,20 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 - Position and view direction
 - Remaining raid time and time of day
 - Quest progress and examined items
+- Map loot: the resumed raid gets the loot of the interrupted raid, without the items you already took
 
 ## Known bugs and limitations
 
 These are not handled yet and are planned for later versions.
 
-- **Bots are not persisted.** The resumed raid spawns new bots. The ones you killed or left alive are forgotten.
-- **Loose loot and containers are not persisted.** The map is generated again, so containers you already
-  searched are full again and the bodies you left behind are gone.
+- **Bots are not persisted.** The resumed raid spawns new bots. The ones you killed or left alive are forgotten,
+  and the bodies you left behind are gone.
+- **Searched containers have to be searched again.** Their content is the right one, but the game no longer
+  knows you already looked inside.
+- **Items dropped on the ground are lost.** An item you picked up and then dropped is in neither your
+  inventory nor the map.
+- **Items merged into a stack come back.** Rounds picked up into a stack you already carried show up again
+  where you found them.
 - **World state is not persisted.** Opened doors, used switches and extraction states are reset.
 - **Weather is not restored.** The server generates new weather for the resumed raid.
 - **Discarding a raid costs nothing.** Unlike the live version, choosing not to resume does not take your

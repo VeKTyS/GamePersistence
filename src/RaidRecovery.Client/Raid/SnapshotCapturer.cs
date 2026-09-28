@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
+using RaidRecovery.Client.Recovery;
 using SPT.Reflection.Utils;
 using UnityEngine;
 
@@ -99,6 +100,12 @@ namespace RaidRecovery.Client.Raid
             {
                 Stop();
                 DiscardInBackground();
+                return;
+            }
+
+            // Resumed raid, player not put back yet: the position is the game's spawn point, not the restored one
+            if (RecoveryController.Instance != null && RecoveryController.Instance.IsPlacementPending)
+            {
                 return;
             }
 

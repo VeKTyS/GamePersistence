@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RaidRecovery.Server.Models;
 using RaidRecovery.Server.Services;
 using SPTarkov.Common.Models.Logging;
@@ -61,6 +62,7 @@ public class RaidRecoveryCallbacks(
         }
 
         var snapshot = result.Snapshot!;
+        ArmLootReplay(sessionId, snapshot);
         logger.Success($"[RaidRecovery] Inventory and health restored, resuming on {snapshot.Map}");
         return httpResponseUtil.GetBody(
             new RestoreResponse
@@ -78,6 +80,7 @@ public class RaidRecoveryCallbacks(
     public ValueTask<string> Discard(MongoId sessionId)
     {
         var discarded = host.Service.Discard(sessionId.ToString());
+        host.Loot.Forget(sessionId.ToString());
         if (discarded)
         {
             logger.Info("[RaidRecovery] Snapshot discarded");
@@ -119,6 +122,8 @@ public class RaidRecoveryCallbacks(
             {
                 logger.Info("[RaidRecovery] Raid end: snapshot purged");
             }
+
+            host.Loot.Forget(sessionId.ToString());
         }
         catch (Exception ex)
         {
@@ -126,6 +131,53 @@ public class RaidRecoveryCallbacks(
         }
 
         return output ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Everything the player carries at the time of the snapshot counts as taken. Most of it never was in the
+    /// raid's loot: those identifiers simply match nothing.
+    /// </summary>
+    private void ArmLootReplay(MongoId sessionId, Snapshot snapshot)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(snapshot.Map))
+            {
+                return;
+            }
+
+            host.Loot.Arm(sessionId.ToString(), snapshot.Map, InventoryIds(snapshot));
+        }
+        catch (Exception ex)
+        {
+            // The profile is already restored: the raid resumes, with new loot
+            logger.Error("[RaidRecovery] Loot replay could not be prepared", ex);
+        }
+    }
+
+    internal static List<string> InventoryIds(Snapshot snapshot)
+    {
+        var ids = new List<string>();
+        if (
+            snapshot.Player?.Profile is not { ValueKind: JsonValueKind.Object } profile
+            || !profile.TryGetProperty("Inventory", out var inventory)
+            || inventory.ValueKind != JsonValueKind.Object
+            || !inventory.TryGetProperty("items", out var items)
+            || items.ValueKind != JsonValueKind.Array
+        )
+        {
+            return ids;
+        }
+
+        foreach (var item in items.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Object && item.TryGetProperty("_id", out var id) && id.ValueKind == JsonValueKind.String)
+            {
+                ids.Add(id.GetString()!);
+            }
+        }
+
+        return ids;
     }
 
     private ValueTask<string> Body<T>(T data)
