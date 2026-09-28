@@ -1,3 +1,4 @@
+using System;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -13,7 +14,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.9.0";
+        public const string Version = "0.10.1";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;
@@ -32,9 +33,26 @@ namespace RaidRecovery.Client
 
         internal static ConfigEntry<bool> KeepBots { get; private set; }
 
+        internal static ConfigEntry<bool> GameScreen { get; private set; }
+
         private void Awake()
         {
             Log = Logger;
+
+            // An exception here goes to the log of Unity, which nobody reads, and the mod is then silently absent:
+            // no capture, no recovery. We write it where the other lines of the mod are.
+            try
+            {
+                Load();
+            }
+            catch (Exception ex)
+            {
+                Log.LogError($"Raid Recovery {Version} could not load, raids are NOT saved: {ex}");
+            }
+        }
+
+        private void Load()
+        {
 
             Enabled = Config.Bind("Capture", "Enabled", true, "Saves the raid state so it can be resumed after a crash.");
             IntervalSeconds = Config.Bind(
@@ -81,6 +99,14 @@ namespace RaidRecovery.Client
                 "Relaunch the raid automatically",
                 true,
                 "After \"Resume\", relaunches the raid on the same map. Otherwise, the raid has to be started by hand."
+            );
+
+            GameScreen = Config.Bind(
+                "Recovery",
+                // BepInEx refuses = \ " ' [ ] in a setting name, and the whole plugin fails to load with it
+                "Use the return-to-raid screen of the game",
+                true,
+                "Offers the recovery on the screen the live game shows after a disconnection. When off, or if that screen cannot be opened, a plain window is used."
             );
 
             KeepBots = Config.Bind(

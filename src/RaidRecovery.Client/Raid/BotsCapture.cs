@@ -12,54 +12,71 @@ using UnityEngine;
 namespace RaidRecovery.Client.Raid
 {
     /// <summary>
-    /// Bots alive and bodies on the map at a given moment. Same two steps as the character: Take copies
-    /// what it needs on the main thread, ToDtos turns the copies into JSON and can run elsewhere.
+    /// Bots alive and bodies on the map. Same two steps as the character: Read copies what it needs on the
+    /// main thread, one bot or one body at a time; ToDtos turns the copies into JSON and can run elsewhere.
     /// </summary>
     internal sealed class BotsCapture
     {
         private readonly List<Bot> _bots = new List<Bot>();
         private readonly List<LootItemSerializer> _corpses = new List<LootItemSerializer>();
 
+        // Bodies already read, so none is written twice
+        private readonly HashSet<string> _bodies = new HashSet<string>();
+
         public int BotCount => _bots.Count;
 
         public int CorpseCount => _corpses.Count;
 
-        public static BotsCapture Take(GameWorld gameWorld)
+        /// <summary>Bots to read, as they are when the pass starts. Each is then read in a step of its own.</summary>
+        public static List<Player> BotsOf(GameWorld gameWorld)
         {
-            var capture = new BotsCapture();
+            return gameWorld
+                .AllAlivePlayersList.Where(player => player != null && player.IsAI && !player.IsYourPlayer)
+                .ToList();
+        }
 
-            foreach (var player in gameWorld.AllAlivePlayersList)
+        public static List<Corpse> CorpsesOf(GameWorld gameWorld)
+        {
+            return gameWorld.LootList.OfType<Corpse>().Where(corpse => corpse != null && corpse.Item != null).ToList();
+        }
+
+        /// <summary>
+        /// Several frames go by between the list and this read. A bot killed in between is read as the body it
+        /// became: otherwise it would be in the snapshot neither alive nor dead.
+        /// </summary>
+        public void Read(Player bot, GameWorld gameWorld)
+        {
+            if (bot == null)
             {
-                // One bot that cannot be read must not cost the others
-                try
-                {
-                    if (player != null && player.IsAI && !player.IsYourPlayer && player.HealthController != null && player.HealthController.IsAlive)
-                    {
-                        capture._bots.Add(Describe(player));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogWarning($"Bot skipped in the snapshot: {ex.Message}");
-                }
+                return;
             }
 
-            foreach (var corpse in gameWorld.LootList.OfType<Corpse>())
+            if (bot.HealthController != null && bot.HealthController.IsAlive)
             {
-                try
-                {
-                    if (corpse != null && corpse.Item != null)
-                    {
-                        capture._corpses.Add(Describe(corpse));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogWarning($"Body skipped in the snapshot: {ex.Message}");
-                }
+                _bots.Add(Describe(bot));
+                return;
             }
 
-            return capture;
+            var profileId = bot.ProfileId;
+            var body = gameWorld.LootList.OfType<Corpse>().FirstOrDefault(corpse => corpse != null && corpse.PlayerProfileID == profileId);
+            if (body != null && body.Item != null && _bodies.Add(body.Item.Id))
+            {
+                _corpses.Add(Describe(body));
+            }
+        }
+
+        public void Read(Corpse corpse)
+        {
+            // Destroyed by the game since the list was made
+            if (corpse == null || corpse.Item == null)
+            {
+                return;
+            }
+
+            if (_bodies.Add(corpse.Item.Id))
+            {
+                _corpses.Add(Describe(corpse));
+            }
         }
 
         private static Bot Describe(Player player)

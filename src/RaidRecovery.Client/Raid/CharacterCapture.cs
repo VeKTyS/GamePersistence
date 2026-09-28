@@ -4,7 +4,7 @@ using UnityEngine;
 namespace RaidRecovery.Client.Raid
 {
     /// <summary>
-    /// State of the character at a given moment. It is taken in two steps: Take reads the game and must run on
+    /// State of the character at a given moment. The two Read methods take the game's state and must run on
     /// the main thread; ToJson only touches copies and can run elsewhere.
     /// </summary>
     internal sealed class CharacterCapture
@@ -17,11 +17,16 @@ namespace RaidRecovery.Client.Raid
 
         /// <summary>
         /// Statistics of the raid so far, already as JSON: their lists are the ones the game keeps writing to,
-        /// so they are serialized here, on the main thread, and not later on another one.
+        /// so they are serialized on the main thread, and not later on another one.
         /// </summary>
         public string StatsJson { get; private set; }
 
-        public static CharacterCapture Take(Player player)
+        public void ReadStats(Player player)
+        {
+            StatsJson = player.Profile.Stats == null ? null : new ProfileStatsSeparatorDescriptor(player.Profile.Stats).ToJson();
+        }
+
+        public void ReadProfile(Player player)
         {
             // The whole profile, built the way the game does it at the end of a raid (BaseLocalGame.GameEnd):
             // skills, quests, achievements, examined items, traders... This is exactly the shape the server
@@ -32,13 +37,10 @@ namespace RaidRecovery.Client.Raid
             // Sent apart, see StatsJson: left here, they would be serialized on another thread while the game writes to them
             profile.Stats = new ProfileStatsSeparatorDescriptor();
 
-            return new CharacterCapture
-            {
-                Position = player.Position,
-                Rotation = player.Rotation,
-                StatsJson = player.Profile.Stats == null ? null : new ProfileStatsSeparatorDescriptor(player.Profile.Stats).ToJson(),
-                _profile = profile,
-            };
+            _profile = profile;
+            // Read last, in the same step as the gear: the position of the snapshot is the one of its inventory
+            Position = player.Position;
+            Rotation = player.Rotation;
         }
 
         /// <summary>Serializes with the game's converters, not with ours.</summary>

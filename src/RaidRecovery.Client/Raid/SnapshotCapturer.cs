@@ -33,7 +33,14 @@ namespace RaidRecovery.Client.Raid
         private bool _captureRequested;
         private bool _stopped;
 
-        // 0 = free, 1 = a send is in progress. Read and written from two threads, hence Interlocked.
+        // What one frame may give to the read. At 60 frames per second a frame lasts 16 ms.
+        private const double FrameBudgetMs = 3.0;
+
+        // Read in progress, and what to do once it is complete
+        private CapturePass _pass;
+        private Action _finish;
+
+        // 0 = free, 1 = a read or a send is in progress. Read and written from two threads, hence Interlocked.
         private int _sending;
 
         public static SnapshotCapturer Current { get; private set; }
@@ -104,6 +111,12 @@ namespace RaidRecovery.Client.Raid
                 return;
             }
 
+            if (_pass != null)
+            {
+                Continue();
+                return;
+            }
+
             // Resumed raid, player not put back yet: the position is the game's spawn point, not the restored one
             if (RecoveryController.Instance != null && RecoveryController.Instance.IsPlacementPending)
             {
@@ -124,7 +137,7 @@ namespace RaidRecovery.Client.Raid
             }
 
             // A request made while a send is in progress stays pending and is served on a later frame
-            if (Capture(player, _captureRequested))
+            if (Begin(player, _captureRequested))
             {
                 _captureRequested = false;
                 _capturedOnce = true;
@@ -148,8 +161,11 @@ namespace RaidRecovery.Client.Raid
             }
         }
 
-        /// <summary>Returns false when nothing was captured, so the caller can try again.</summary>
-        private bool Capture(Player player, bool manual)
+        /// <summary>
+        /// Starts reading the raid. Returns false when nothing was started, so the caller can try again.
+        /// The read itself goes on over the next frames, see Continue.
+        /// </summary>
+        private bool Begin(Player player, bool manual)
         {
             // A previous send is not finished: we skip this capture rather than piling up sends
             if (Interlocked.CompareExchange(ref _sending, 1, 0) != 0)
@@ -163,44 +179,78 @@ namespace RaidRecovery.Client.Raid
                 return !manual;
             }
 
-            // Reading the game state: has to happen on the main thread, so it must stay as short as possible
-            var stopwatch = Stopwatch.StartNew();
-            SnapshotDto snapshot;
-            CharacterCapture character;
+            var pass = new CapturePass { Manual = manual };
+            var character = new CharacterCapture();
+            BotsCapture bots = null;
+            SnapshotDto snapshot = null;
+
             try
             {
-                character = CharacterCapture.Take(player);
-                snapshot = Describe(player, character);
-                snapshot.World = _world.Take(_gameWorld, player);
+                if (Plugin.KeepBots.Value)
+                {
+                    bots = new BotsCapture();
+                    var captured = bots;
+                    foreach (var bot in BotsCapture.BotsOf(_gameWorld))
+                    {
+                        var current = bot;
+                        pass.Add("bot", () => captured.Read(current, _gameWorld), required: false);
+                    }
+
+                    foreach (var corpse in BotsCapture.CorpsesOf(_gameWorld))
+                    {
+                        var current = corpse;
+                        pass.Add("body", () => captured.Read(current), required: false);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Interlocked.Exchange(ref _sending, 0);
-                Plugin.Log.LogError($"Could not read the raid state: {ex}");
-                LastSaveStatus = "Failed, see the log";
-                // Counted as done: a read that fails would fail again on the next frame
-                return true;
+                // Apart from the rest: bots that cannot be listed must not cost the snapshot of the player
+                Plugin.Log.LogError($"Could not list the bots, the snapshot goes without them: {ex}");
+                bots = null;
+                pass = new CapturePass { Manual = manual };
             }
 
-            // Apart from the rest: bots that cannot be read must not cost the snapshot of the player
-            BotsCapture bots = null;
-            if (Plugin.KeepBots.Value)
+            // The player comes last: their position and gear are those of the moment the snapshot leaves
+            pass.Add("statistics", () => character.ReadStats(player));
+            pass.Add("profile", () => character.ReadProfile(player));
+            pass.Add(
+                "map",
+                () =>
+                {
+                    snapshot = Describe(player, character);
+                    snapshot.World = _world.Take(_gameWorld, player);
+                }
+            );
+
+            _pass = pass;
+            _finish = () => Task.Run(() => SendAsync(snapshot, character, bots, pass));
+            return true;
+        }
+
+        /// <summary>Runs the next steps of the read in progress, and sends the snapshot once the last one is done.</summary>
+        private void Continue()
+        {
+            var pass = _pass;
+            if (!pass.Run(FrameBudgetMs))
             {
-                try
-                {
-                    bots = BotsCapture.Take(_gameWorld);
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"Could not read the bots, the snapshot goes without them: {ex}");
-                }
+                return;
             }
 
-            var readMs = stopwatch.Elapsed.TotalMilliseconds;
+            var finish = _finish;
+            _pass = null;
+            _finish = null;
+
+            if (pass.Failure != null)
+            {
+                Interlocked.Exchange(ref _sending, 0);
+                Plugin.Log.LogError($"Could not read the raid state: {pass.Failure}");
+                LastSaveStatus = "Failed, see the log";
+                return;
+            }
 
             // Serialization and send: off the main thread, so they do not cost a frame
-            Task.Run(() => SendAsync(snapshot, character, bots, readMs, manual));
-            return true;
+            finish();
         }
 
         private SnapshotDto Describe(Player player, CharacterCapture character)
@@ -237,7 +287,7 @@ namespace RaidRecovery.Client.Raid
             return Math.Max(0, (int)timer.EscapeTimeSeconds());
         }
 
-        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, BotsCapture bots, double readMs, bool manual)
+        private async Task SendAsync(SnapshotDto snapshot, CharacterCapture character, BotsCapture bots, CapturePass pass)
         {
             try
             {
@@ -275,11 +325,11 @@ namespace RaidRecovery.Client.Raid
 
                 LastSaveStatus = $"Saved at {DateTime.Now:HH:mm:ss}";
                 // A save asked by hand is always logged: it is the proof the player is looking for
-                if (manual || Plugin.LogMeasurements.Value)
+                if (pass.Manual || Plugin.LogMeasurements.Value)
                 {
                     var size = Encoding.UTF8.GetByteCount(json);
                     Plugin.Log.LogInfo(
-                        $"Snapshot saved{(manual ? " (on request)" : "")}: read {readMs:0.00} ms (main thread), serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes, {bots?.BotCount ?? 0} bots, {bots?.CorpseCount ?? 0} bodies"
+                        $"Snapshot saved{(pass.Manual ? " (on request)" : "")}: read {pass.TotalMs:0.00} ms over {pass.Frames} frames (main thread), at most {pass.LongestFrameMs:0.00} ms in one frame, longest step {pass.LongestStep} {pass.LongestStepMs:0.00} ms, serialization {serializeMs:0.00} ms, send {sendMs:0} ms, {size} bytes, {bots?.BotCount ?? 0} bots, {bots?.CorpseCount ?? 0} bodies"
                     );
                 }
             }

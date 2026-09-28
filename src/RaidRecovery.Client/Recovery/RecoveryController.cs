@@ -21,6 +21,7 @@ namespace RaidRecovery.Client.Recovery
         {
             Idle,
             Offering,
+            Choosing,
             Restoring,
             ReloadingMenu,
             Launching,
@@ -320,6 +321,14 @@ namespace RaidRecovery.Client.Recovery
                 _mainThread.Enqueue(() =>
                 {
                     _offer = pending;
+                    if (Plugin.GameScreen.Value && ReturnToRaidScreen.TryShow(pending.Map, Resume, Discard))
+                    {
+                        // The game draws the choice: our own window stays closed
+                        _step = Step.Choosing;
+                        Plugin.Log.LogInfo("Return-to-raid screen of the game shown");
+                        return;
+                    }
+
                     _step = Step.Offering;
                     Plugin.Log.LogInfo("Recovery window shown");
                 });

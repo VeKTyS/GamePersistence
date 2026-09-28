@@ -68,8 +68,9 @@ These are not handled yet and are planned for later versions.
 - **An extraction countdown is not restored.** Only the open or closed state of an extraction is.
 - **A door caught in the middle of its movement is not restored.**
 - **Weather is not restored.** The server generates new weather for the resumed raid.
-- **Discarding a raid costs nothing.** Unlike the live version, choosing not to resume does not take your
-  gear away: you go back to the profile you had before the raid.
+- **Discarding a raid costs nothing, on purpose.** Unlike the live version, choosing not to resume does not
+  take your gear away: you go back to the profile you had before the raid. The return-to-raid screen comes
+  from the game and still warns about a penalty: there is none.
 - **Scav raids cannot be resumed.** The snapshot is detected, then discarded.
 - **Progress since the last snapshot is lost.** A snapshot is taken every 30 seconds by default, so up to
   that much progress can be missing.
