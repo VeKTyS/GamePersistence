@@ -45,6 +45,8 @@ Think of it as an automatic save, like in any other single-player game.
    puts the doors, the bots and the bodies back in place.
 6. **If you leave, nothing is lost.** You go back to the profile you had before the raid, gear included.
    There is no penalty.
+7. **A resumed raid stays resumable.** The snapshot is kept until the raid truly ends. If the game crashes
+   again, even while the resumed raid is loading, the raid is offered again.
 
 A snapshot that is more than 24 hours old is ignored and deleted.
 
@@ -124,8 +126,6 @@ the profile you had before it.
 - **Closing the game on purpose also triggers a recovery.** Alt+F4 just before dying brings back the state
   of the last snapshot. This is accepted: the mod protects from a crash, it does not try to prevent
   cheating in a single-player game.
-- **A crash while the resumed raid is loading loses the recovery.** The snapshot is consumed as soon as it
-  is applied to the profile.
 - **The raid preparation screen is skipped on relaunch.** Mods that hook into that screen do not run for
   the resumed raid.
 - **A restored bot loses its alert state and its group.** It comes back where it stood, and behaves like a

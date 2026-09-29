@@ -17,6 +17,9 @@ public sealed record RecoveryNotes(List<string> Taken, List<string> Corpses, int
     /// <summary>Items lying where the map did not put them, each as the JSON the game wrote.</summary>
     public List<string> Loose { get; init; } = [];
 
+    /// <summary>Snapshot the last recovery came from. The same one played again is not a new recovery.</summary>
+    public string? LastSnapshot { get; init; }
+
     public static RecoveryNotes Empty => new([], []);
 }
 

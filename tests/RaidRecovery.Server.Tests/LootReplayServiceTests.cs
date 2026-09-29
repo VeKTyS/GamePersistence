@@ -358,6 +358,62 @@ public class LootReplayServiceTests
     }
 
     [Fact]
+    public void A_snapshot_played_again_after_a_crash_at_loading_counts_once()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage], SecondsPlayed: 300, SnapshotId: "a"));
+
+        // The game crashed while loading: same snapshot, second recovery
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([Loot.Bandage], SecondsPlayed: 300, SnapshotId: "a"));
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.True(decision.Replayed);
+        Assert.Equal(300, decision.SecondsPlayed);
+        Assert.Equal(1, _service.ResumesDone(Samples.ProfileId));
+    }
+
+    [Fact]
+    public void A_snapshot_played_again_after_the_resumed_raid_started_counts_once()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 300, SnapshotId: "a"));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        // Crash before the first snapshot of the resumed raid
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 300, SnapshotId: "a"));
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.True(decision.Replayed);
+        Assert.Equal(300, decision.SecondsPlayed);
+        Assert.Equal(1, _service.ResumesDone(Samples.ProfileId));
+    }
+
+    [Fact]
+    public void Another_snapshot_of_the_same_raid_is_a_new_recovery()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 300, SnapshotId: "a"));
+        _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SecondsPlayed: 120, SnapshotId: "b"));
+        var decision = _service.OnLootGenerated(Samples.ProfileId, Map, OtherLoot());
+
+        Assert.Equal(420, decision.SecondsPlayed);
+        Assert.Equal(2, _service.ResumesDone(Samples.ProfileId));
+    }
+
+    [Fact]
+    public void The_limit_of_recoveries_does_not_count_the_snapshot_being_played_again()
+    {
+        _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());
+        _service.Arm(Samples.ProfileId, Map, new RecoveryTicket([], SnapshotId: "a"));
+
+        // With a limit of one recovery, counting this one would refuse the second try and discard the raid
+        Assert.Equal(0, _service.ResumesDone(Samples.ProfileId, "a"));
+        Assert.Equal(1, _service.ResumesDone(Samples.ProfileId, "b"));
+    }
+
+    [Fact]
     public void A_new_raid_starts_the_count_of_recoveries_again()
     {
         _service.OnLootGenerated(Samples.ProfileId, Map, Loot.Sample());

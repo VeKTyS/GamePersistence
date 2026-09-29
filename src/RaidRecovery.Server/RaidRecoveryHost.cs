@@ -68,6 +68,7 @@ public class RaidRecoveryHost : IOnLoad
         try
         {
             LootGeneratedPatch.Service = Loot;
+            LootGeneratedPatch.Recovery = Service;
             LootGeneratedPatch.Logger = _logger;
             new LootGeneratedPatch().Enable();
         }

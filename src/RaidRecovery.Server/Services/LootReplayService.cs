@@ -30,13 +30,15 @@ public sealed record LootDecision(
 /// <param name="BotsAlive">Bots alive in the snapshot. With the bodies, they are the bots the map must not spawn again.</param>
 /// <param name="Gone">Loot items the game saw on the map and no longer sees. They count as taken, whoever holds them.</param>
 /// <param name="Loose">Items lying where the map did not put them, each as the JSON the game wrote.</param>
+/// <param name="SnapshotId">Tells one snapshot from another. null: every recovery counts as a new one.</param>
 public sealed record RecoveryTicket(
     IEnumerable<string> InventoryIds,
     IReadOnlyList<string>? Corpses = null,
     int? SecondsPlayed = null,
     int BotsAlive = 0,
     IReadOnlyCollection<string>? Gone = null,
-    IReadOnlyList<string>? Loose = null
+    IReadOnlyList<string>? Loose = null,
+    string? SnapshotId = null
 );
 
 /// <summary>
@@ -70,22 +72,30 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
             taken.UnionWith(ticket.InventoryIds);
             taken.UnionWith(ticket.Gone ?? []);
 
+            // The game crashed while the resumed raid was loading: the same snapshot is played again.
+            // Its time and its recovery are already counted, adding them again would count them twice.
+            var again = IsSameSnapshot(notes, ticket.SnapshotId);
+
             // The clock of a resumed raid restarts at zero: the time played adds up from one resume to the next
-            int? played = ticket.SecondsPlayed is { } seconds ? notes.SecondsPlayed + Math.Max(0, seconds) : null;
+            int? played = ticket.SecondsPlayed is { } seconds ? notes.SecondsPlayed + (again ? 0 : Math.Max(0, seconds)) : null;
             store.WriteNotes(
                 profileId,
-                new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []], notes.Resumes + 1)
+                new RecoveryNotes([.. taken], [.. ticket.Corpses ?? []], notes.Resumes + (again ? 0 : 1))
                 {
                     Loose = MergeLoose(notes.Loose, ticket.Loose ?? [], taken),
                     SecondsPlayed = played ?? notes.SecondsPlayed,
+                    LastSnapshot = ticket.SnapshotId,
                 }
             );
             _armed[profileId] = (map, played, ticket.BotsAlive + (ticket.Corpses?.Count ?? 0));
         }
     }
 
-    /// <summary>How many times the raid in progress was resumed. Back to zero as soon as a new raid starts.</summary>
-    public int ResumesDone(string profileId)
+    /// <summary>
+    /// How many times the raid in progress was resumed before the recovery of this snapshot. Back to zero as
+    /// soon as a new raid starts. A snapshot played again does not count its own first recovery.
+    /// </summary>
+    public int ResumesDone(string profileId, string? snapshotId = null)
     {
         if (!SnapshotStore.IsValidProfileId(profileId))
         {
@@ -94,8 +104,14 @@ public sealed class LootReplayService(ILootStore store, Func<string, SpawnpointT
 
         lock (_gate)
         {
-            return store.ReadNotes(profileId).Resumes;
+            var notes = store.ReadNotes(profileId);
+            return IsSameSnapshot(notes, snapshotId) ? Math.Max(0, notes.Resumes - 1) : notes.Resumes;
         }
+    }
+
+    private static bool IsSameSnapshot(RecoveryNotes notes, string? snapshotId)
+    {
+        return snapshotId is not null && string.Equals(notes.LastSnapshot, snapshotId, StringComparison.Ordinal);
     }
 
     /// <summary>Called each time SPT generates the loot of a raid.</summary>

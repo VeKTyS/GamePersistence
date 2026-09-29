@@ -17,6 +17,8 @@ public class LootGeneratedPatch : AbstractPatch
     // A patch is a static method: SPT cannot inject anything into it, the host hands these over at load time
     internal static LootReplayService? Service { get; set; }
 
+    internal static RaidRecoveryService? Recovery { get; set; }
+
     internal static ISptLogger<RaidRecoveryHost>? Logger { get; set; }
 
     protected override MethodBase GetTargetMethod()
@@ -35,6 +37,11 @@ public class LootGeneratedPatch : AbstractPatch
             if (Service is null || __result?.Loot is null)
             {
                 return;
+            }
+
+            if (Recovery?.OnRaidMapKnown(sessionId.ToString(), name) == true)
+            {
+                Logger?.Info($"[RaidRecovery] Raid started on {name}: the snapshot of a raid on another map is purged");
             }
 
             var decision = Service.OnLootGenerated(sessionId.ToString(), name, __result.Loot.ToList());

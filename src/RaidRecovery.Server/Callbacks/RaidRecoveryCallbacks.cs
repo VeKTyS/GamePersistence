@@ -76,7 +76,7 @@ public class RaidRecoveryCallbacks(
         var snapshot = result.Snapshot!;
         ArmLootReplay(sessionId, snapshot);
         host.Weather.Arm(sessionId.ToString());
-        logger.Success($"[RaidRecovery] Inventory and health restored, resuming on {snapshot.Map}");
+        logger.Success($"[RaidRecovery] Inventory and health restored, resuming on {snapshot.Map}. The snapshot is kept until the raid ends");
         return httpResponseUtil.GetBody(
             new RestoreResponse
             {
@@ -97,7 +97,13 @@ public class RaidRecoveryCallbacks(
 
     private string? Refusal(MongoId sessionId, Snapshot snapshot)
     {
-        return ResumePolicy.Refusal(snapshot, host.Loot.ResumesDone(sessionId.ToString()), host.Config);
+        return ResumePolicy.Refusal(snapshot, host.Loot.ResumesDone(sessionId.ToString(), SnapshotId(snapshot)), host.Config);
+    }
+
+    /// <summary>The server stamps each snapshot with the time it received it: two snapshots never share it.</summary>
+    internal static string? SnapshotId(Snapshot snapshot)
+    {
+        return snapshot.SavedAt?.ToString("O");
     }
 
     public ValueTask<string> Discard(MongoId sessionId)
@@ -182,7 +188,8 @@ public class RaidRecoveryCallbacks(
                     holdsBots ? snapshot.Raid?.SecondsPlayed : null,
                     holdsBots ? snapshot.Bots!.Value.GetArrayLength() : 0,
                     Gone(snapshot),
-                    RawEntries(snapshot, "loose")
+                    RawEntries(snapshot, "loose"),
+                    SnapshotId(snapshot)
                 )
             );
         }

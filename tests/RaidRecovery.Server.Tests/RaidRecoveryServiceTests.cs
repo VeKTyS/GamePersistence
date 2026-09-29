@@ -204,32 +204,114 @@ public sealed class RaidRecoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Restore_can_only_be_played_once()
+    public async Task A_restored_snapshot_is_offered_again_if_the_raid_never_started()
     {
+        // Seen in game: a crash while the resumed raid was loading, and the raid could not be joined any more
         _service.Save(Samples.ProfileId, Samples.Snapshot(map: "shoreline"));
-        var applications = 0;
-        Task<string?> Apply(Models.Snapshot _) { applications++; return Task.FromResult<string?>(null); }
 
-        var first = await _service.RestoreAsync(Samples.ProfileId, Apply);
-        var second = await _service.RestoreAsync(Samples.ProfileId, Apply);
+        var first = await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
 
         Assert.True(first.Restored);
-        Assert.False(second.Restored);
-        Assert.Equal(1, applications);
+        Assert.Equal("shoreline", _service.GetPending(Samples.ProfileId)?.Map);
+        Assert.True((await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds)).Restored);
+    }
+
+    [Fact]
+    public async Task The_start_of_the_resumed_raid_keeps_the_snapshot()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot(map: "shoreline"));
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+
+        Assert.False(_service.OnRaidStarted(Samples.ProfileId));
+
+        // A crash before the first snapshot of the resumed raid: the raid can still be joined
+        Assert.Equal("shoreline", _service.GetPending(Samples.ProfileId)?.Map);
+    }
+
+    [Fact]
+    public async Task The_resumed_raid_replaces_the_snapshot_with_its_own()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot(sessionId: "first"));
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.OnRaidStarted(Samples.ProfileId);
+
+        Assert.Equal(SaveOutcome.Saved, _service.Save(Samples.ProfileId, Samples.Snapshot(sessionId: "resumed")));
+
+        Assert.Equal("resumed", _service.GetPending(Samples.ProfileId)?.SessionId);
+    }
+
+    [Fact]
+    public async Task The_end_of_the_resumed_raid_purges_the_snapshot()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot());
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.OnRaidStarted(Samples.ProfileId);
+
+        Assert.True(_service.OnRaidEnded(Samples.ProfileId));
+
+        Assert.Null(_service.GetPending(Samples.ProfileId));
         Assert.Empty(Directory.GetFiles(_temp.Path));
     }
 
     [Fact]
-    public async Task Restore_consumes_the_previous_file_too()
+    public async Task A_restored_snapshot_can_still_be_discarded()
     {
-        // Two writes: there is a current file and a previous one. If only the current one were deleted,
-        // a second recovery would fall back on the previous one and duplicate the loot.
-        _service.Save(Samples.ProfileId, Samples.Snapshot(sessionId: "a"));
-        _service.Save(Samples.ProfileId, Samples.Snapshot(sessionId: "a"));
-
+        _service.Save(Samples.ProfileId, Samples.Snapshot());
         await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
 
-        Assert.False((await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds)).Restored);
+        Assert.True(_service.Discard(Samples.ProfileId));
+
+        Assert.Null(_service.GetPending(Samples.ProfileId));
+    }
+
+    [Fact]
+    public async Task Only_the_raid_start_that_follows_a_recovery_keeps_the_snapshot()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot());
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.OnRaidStarted(Samples.ProfileId);
+
+        // No recovery before this second start: the snapshot is a leftover
+        Assert.True(_service.OnRaidStarted(Samples.ProfileId));
+
+        Assert.Null(_service.GetPending(Samples.ProfileId));
+    }
+
+    [Fact]
+    public async Task A_recovery_given_up_does_not_protect_the_snapshot_of_a_later_raid()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot());
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.Discard(Samples.ProfileId);
+
+        _service.OnRaidStarted(Samples.ProfileId);
+        _service.Save(Samples.ProfileId, Samples.Snapshot(map: "leftover"));
+
+        Assert.True(_service.OnRaidStarted(Samples.ProfileId));
+    }
+
+    [Fact]
+    public async Task A_raid_started_on_another_map_purges_the_restored_snapshot()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot(map: "shoreline"));
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.OnRaidStarted(Samples.ProfileId);
+
+        Assert.True(_service.OnRaidMapKnown(Samples.ProfileId, "woods"));
+
+        Assert.Null(_service.GetPending(Samples.ProfileId));
+    }
+
+    [Fact]
+    public async Task A_raid_started_on_the_map_of_the_snapshot_keeps_it()
+    {
+        _service.Save(Samples.ProfileId, Samples.Snapshot(map: "shoreline"));
+        await _service.RestoreAsync(Samples.ProfileId, ApplySucceeds);
+        _service.OnRaidStarted(Samples.ProfileId);
+
+        Assert.False(_service.OnRaidMapKnown(Samples.ProfileId, "Shoreline"));
+
+        Assert.NotNull(_service.GetPending(Samples.ProfileId));
     }
 
     [Fact]
@@ -246,14 +328,20 @@ public sealed class RaidRecoveryServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task Concurrent_restores_apply_the_snapshot_once()
+    public async Task Concurrent_restores_never_apply_the_snapshot_at_the_same_time()
     {
         _service.Save(Samples.ProfileId, Samples.Snapshot());
-        var applications = 0;
+        var running = 0;
+        var overlapped = false;
         async Task<string?> SlowApply(Models.Snapshot _)
         {
-            Interlocked.Increment(ref applications);
+            if (Interlocked.Increment(ref running) > 1)
+            {
+                overlapped = true;
+            }
+
             await Task.Delay(50);
+            Interlocked.Decrement(ref running);
             return null;
         }
 
@@ -262,8 +350,8 @@ public sealed class RaidRecoveryServiceTests : IDisposable
             _service.RestoreAsync(Samples.ProfileId, SlowApply)
         );
 
-        Assert.Equal(1, applications);
-        Assert.Single(results, r => r.Restored);
+        Assert.False(overlapped);
+        Assert.All(results, r => Assert.True(r.Restored));
     }
 
     [Fact]
