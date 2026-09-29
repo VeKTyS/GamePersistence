@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
 using EFT.Communications;
+using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
 using RaidRecovery.Client.Raid;
@@ -97,7 +98,8 @@ namespace RaidRecovery.Client.Recovery
                 return;
             }
 
-            if (_step != Step.Idle || !_checkDue || !Plugin.Enabled.Value)
+            // A raid played with others is never offered as a raid to resume alone
+            if (_step != Step.Idle || !_checkDue || !Plugin.Enabled.Value || CoopGuard.IsStoodDown)
             {
                 return;
             }

@@ -8,6 +8,7 @@ using Comfort.Common;
 using EFT;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
 using RaidRecovery.Client.Recovery;
@@ -54,7 +55,7 @@ namespace RaidRecovery.Client.Raid
 
         public static void Attach(GameWorld gameWorld)
         {
-            if (!Plugin.Enabled.Value || gameWorld == null)
+            if (!Plugin.Enabled.Value || gameWorld == null || CoopGuard.IsStoodDown)
             {
                 return;
             }

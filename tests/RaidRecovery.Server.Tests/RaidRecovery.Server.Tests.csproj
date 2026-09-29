@@ -27,6 +27,7 @@
   <!-- The plugin cannot be referenced, it needs the game. Its files that do not are compiled here as they are. -->
   <ItemGroup>
     <Compile Include="..\..\src\RaidRecovery.Client\Recovery\GroupPlan.cs" Link="Client\GroupPlan.cs" />
+    <Compile Include="..\..\src\RaidRecovery.Client\Coop\CoopPolicy.cs" Link="Client\CoopPolicy.cs" />
   </ItemGroup>
 
   <!-- The mod does not copy the SPT DLLs (the server provides them). The tests, however, must be able to load them. -->
