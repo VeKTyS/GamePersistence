@@ -13,8 +13,8 @@ namespace RaidRecovery.Client
     [BepInDependency("com.SPT.core", "4.1.0")]
     public class Plugin : BaseUnityPlugin
     {
-        public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.12.1";
+        public const string Guid = "com.vektys.raidrecovery";
+        public const string Version = "1.0.0";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;
@@ -116,7 +116,7 @@ namespace RaidRecovery.Client
             BotsRememberPlayer = Config.Bind(
                 "Recovery",
                 "Bots that were after you still are",
-                false,
+                true,
                 "When on, a bot that was chasing you when the raid was cut chases you again as soon as it is back. When off, it comes back unaware of you, which gives you time to settle in."
             );
 

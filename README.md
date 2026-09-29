@@ -2,8 +2,8 @@
 
 A mod for SPT 4.1 (Single Player Tarkov) that lets you resume a raid after the game crashes.
 
-> **Beta.** The mod was played on Factory and Interchange, on an installation without other mods. It has not
-> been tried yet next to a large mod list, nor on every map. Back up your profile before you rely on it.
+> **Tested on** an installation without other mods. It has not been tried yet next to a large mod list,
+> nor with Fika. Back up your profile before you rely on it.
 
 ## Why
 
@@ -79,8 +79,8 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 **The bots**
 
 - Bots that were alive come back with their gear, their health and their position
-- A bot comes back unaware of you, so that you have time to settle in. A setting makes it chase you
-  again if it was doing so
+- A bot that was chasing you chases you again. A setting makes it come back unaware of you, so that you
+  have time to settle in
 - Bodies are where they fell, with what they carried
 - Bots that already spawned do not spawn a second time
 
@@ -100,7 +100,7 @@ Press F12 in the game and look for Raid Recovery.
 | Use the return-to-raid screen of the game | on | When off, a plain window is shown instead |
 | Keep the loot as the game sees it | on | When off, only the items you carry are removed from the loot |
 | Keep bots and bodies | on | When off, the resumed raid spawns new bots |
-| Bots that were after you still are | off | When on, a bot that was chasing you chases you again as soon as it is back |
+| Bots that were after you still are | on | When off, a bot that was chasing you comes back unaware of you |
 | Log measurements | on | Writes the cost and size of each snapshot to the log |
 
 The last four are also a way out: if a resumed raid misbehaves, turning one of them off tells which part is
