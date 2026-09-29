@@ -66,6 +66,12 @@ namespace RaidRecovery.Client.Raid
                 return;
             }
 
+            if (!CoopGuard.SavesThisRaid)
+            {
+                Plugin.Log.LogInfo($"Raid on {gameWorld.LocationId} joined, not hosted: it is not saved from here");
+                return;
+            }
+
             var capturer = gameWorld.gameObject.AddComponent<SnapshotCapturer>();
             capturer._gameWorld = gameWorld;
             capturer._startedAt = DateTime.UtcNow;

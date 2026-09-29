@@ -26,5 +26,27 @@ namespace RaidRecovery.Client.Coop
 
             return pluginIds.FirstOrDefault(id => string.Equals(id, FikaId, StringComparison.OrdinalIgnoreCase));
         }
+
+        /// <summary>
+        /// The mod does nothing at all: a co-op mod is there and nobody tells the mod what its raids are.
+        /// </summary>
+        public static bool StandsDown(string coopMod, bool coordinatorDeclared)
+        {
+            return coopMod != null && !coordinatorDeclared;
+        }
+
+        /// <summary>
+        /// Whether the raid that starts is saved by this player. Alone, always. With others, only when the
+        /// coordinator says so: the world of the raid belongs to one player, the others must not save it.
+        /// </summary>
+        public static bool SavesRaid(string coopMod, bool coordinatorDeclared, bool coordinatorSaves)
+        {
+            if (coopMod == null)
+            {
+                return true;
+            }
+
+            return coordinatorDeclared && coordinatorSaves;
+        }
     }
 }

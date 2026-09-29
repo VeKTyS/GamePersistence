@@ -3,6 +3,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using JsonType;
 using Newtonsoft.Json.Linq;
+using RaidRecovery.Client.Api;
+using RaidRecovery.Client.Coop;
 using SPT.Common.Http;
 using SPT.Reflection.Utils;
 
@@ -31,8 +33,10 @@ namespace RaidRecovery.Client.Recovery
             var app = ClientAppUtils.GetMainApp() ?? throw new InvalidOperationException("Game application not found");
 
             // InternalStartGame looks the map up with "contains": we first make sure it exists under this exact name
-            var known = app.Session.LocationSettings.locations.Values.Any(l => string.Equals(l.Id, map, StringComparison.OrdinalIgnoreCase));
-            if (!known)
+            var location = app.Session.LocationSettings.locations.Values.FirstOrDefault(l =>
+                string.Equals(l.Id, map, StringComparison.OrdinalIgnoreCase)
+            );
+            if (location == null)
             {
                 throw new InvalidOperationException($"Map unknown to the game: {map}");
             }
@@ -46,7 +50,34 @@ namespace RaidRecovery.Client.Recovery
             }
 
             ApplyDefaultRaidSettings(settings);
-            Watch(app.InternalStartGame(map, true, true), "Raid launch");
+
+            var coordinator = CoopGuard.Coordinator;
+            if (coordinator == null)
+            {
+                Watch(app.InternalStartGame(map, true, true), "Raid launch");
+                return;
+            }
+
+            Watch(StartWithAsync(coordinator, app, settings, location, map), "Raid launch");
+        }
+
+        /// <summary>
+        /// A raid played with others is announced before it is launched. The map is set here because the
+        /// coordinator reads it from the settings, and the game only sets it once the launch has begun.
+        /// </summary>
+        private static async Task StartWithAsync(
+            ICoopCoordinator coordinator,
+            EFT.TarkovApplication app,
+            EFT.RaidSettings settings,
+            LocationSettings.Location location,
+            string map
+        )
+        {
+            settings.SelectedLocation = location;
+            // No ConfigureAwait(false): what follows calls the game, which only answers on the main thread
+            await coordinator.BeforeLaunchAsync(settings);
+            Plugin.Log.LogInfo($"{coordinator.Name} is ready, launching the raid");
+            await app.InternalStartGame(map, true, true);
         }
 
         /// <summary>
