@@ -42,13 +42,16 @@ namespace RaidRecovery.Client.Recovery
                 return;
             }
 
+            var sizes = GroupPlan.Sizes(bots, bot => bot.Group);
+            // Zone each group of the snapshot comes back in: its members have to share it to find each other
+            var zones = new Dictionary<int, BotZone>();
             var spawned = 0;
-            foreach (var bot in bots)
+            foreach (var bot in GroupPlan.LeadersFirst(bots, bot => bot.IsBoss))
             {
                 // One bot that fails must not cost the others
                 try
                 {
-                    if (await SpawnAsync(spawner, bot))
+                    if (await SpawnAsync(spawner, bot, sizes, zones))
                     {
                         spawned++;
                     }
@@ -89,7 +92,54 @@ namespace RaidRecovery.Client.Recovery
             }
         }
 
-        private static async Task<bool> SpawnAsync(BotSpawner spawner, BotDto bot)
+        /// <summary>
+        /// The game puts a bot in the group of its zone. Bots that shared a group get the zone of that group,
+        /// by its name; alone, a bot gets the zone closest to where it stood, as before.
+        /// </summary>
+        private static BotZone ZoneOf(BotSpawner spawner, BotDto bot, Vector3 position, Dictionary<int, int> sizes, Dictionary<int, BotZone> zones)
+        {
+            if (!GroupPlan.IsShared(sizes, bot.Group))
+            {
+                return spawner.GetClosestZone(position, out _);
+            }
+
+            if (zones.TryGetValue(bot.Group.Value, out var known))
+            {
+                return known;
+            }
+
+            var zone = string.IsNullOrEmpty(bot.Zone) ? null : spawner.GetZoneByName(bot.Zone);
+            if (zone == null)
+            {
+                zone = spawner.GetClosestZone(position, out _);
+            }
+
+            if (zone != null)
+            {
+                zones[bot.Group.Value] = zone;
+            }
+
+            return zone;
+        }
+
+        /// <summary>
+        /// The game only runs the logic of a boss, and only lets followers join it, once it was told the bot
+        /// leads. It then takes the members of its group by itself, now and every 15 seconds.
+        /// </summary>
+        private static void Lead(BotOwner owner, int followers)
+        {
+            try
+            {
+                owner.Boss.SetBoss(followers);
+                Plugin.Log.LogInfo($"Bot {owner.Profile?.Nickname} leads its group again, {followers} followers expected");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Bot {owner.Profile?.Nickname} does not lead its group: {ex.Message}");
+            }
+        }
+
+        private static async Task<bool> SpawnAsync(BotSpawner spawner, BotDto bot, Dictionary<int, int> sizes, Dictionary<int, BotZone> zones)
         {
             if (bot?.Position == null || bot.Profile == null)
             {
@@ -100,7 +150,8 @@ namespace RaidRecovery.Client.Recovery
             var descriptor = bot.Profile.ToString().ParseJsonTo<ProfileDescriptor>();
             var profile = new Profile(descriptor);
 
-            var zone = spawner.GetClosestZone(position, out _);
+            var zone = ZoneOf(spawner, bot, position, sizes, zones);
+            var followers = GroupPlan.FollowersOf(sizes, bot.Group);
             // Navigation point the bot starts from: the closest one to where it stood
             var corePoint = AICorePointHolder.GetClosest(position);
             if (zone == null || corePoint == null)
@@ -143,7 +194,11 @@ namespace RaidRecovery.Client.Recovery
                     }
 
                     RestoredIds.Add(owner.GetPlayer.ProfileId);
-                    // Off by default: coming back to a raid with a bot already on your heels is no way to settle in
+                    if (bot.IsBoss)
+                    {
+                        Lead(owner, followers);
+                    }
+
                     if (bot.HuntsPlayer && Plugin.BotsRememberPlayer.Value)
                     {
                         Hunt(owner);

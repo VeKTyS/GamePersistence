@@ -81,6 +81,7 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 - Bots that were alive come back with their gear, their health and their position
 - A bot that was chasing you chases you again. A setting makes it come back unaware of you, so that you
   have time to settle in
+- A boss leads its guards again, and the members of a squad come back in the same squad
 - Bodies are where they fell, with what they carried
 - Bots that already spawned do not spawn a second time
 
@@ -128,8 +129,8 @@ the profile you had before it.
   cheating in a single-player game.
 - **The raid preparation screen is skipped on relaunch.** Mods that hook into that screen do not run for
   the resumed raid.
-- **A restored bot loses its alert state and its group.** It comes back where it stood, and behaves like a
-  bot that just spawned.
+- **A restored bot forgets what it was doing.** It comes back where it stood, in its squad, but it does not
+  remember a sound it heard or a place it was about to check.
 - **What was in motion is not restored, on purpose.** A grenade in the air, a bot in the middle of an
   action: the raid resumes calm.
 - **A stack you only took part of comes back whole.** Take 20 rounds out of a stack of 60 and the 60 are

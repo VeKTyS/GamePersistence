@@ -61,6 +61,18 @@ namespace RaidRecovery.Client.Models
         [JsonProperty("huntsPlayer")]
         public bool HuntsPlayer { get; set; }
 
+        /// <summary>Group the bot belonged to. Bots that share it come back in one group. null: not recorded.</summary>
+        [JsonProperty("group")]
+        public int? Group { get; set; }
+
+        /// <summary>Name of the zone of that group, the one its members patrol.</summary>
+        [JsonProperty("zone")]
+        public string Zone { get; set; }
+
+        /// <summary>true if the bot led its group: a boss with its guards, or the leader of a scav squad.</summary>
+        [JsonProperty("isBoss")]
+        public bool IsBoss { get; set; }
+
         /// <summary>Whole profile of the bot, gear and health included, serialized by the game.</summary>
         [JsonProperty("profile")]
         public JRaw Profile { get; set; }

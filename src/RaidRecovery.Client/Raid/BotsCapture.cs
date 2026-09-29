@@ -90,8 +90,13 @@ namespace RaidRecovery.Client.Raid
             }
 
             var settings = player.Profile.Info.Settings;
+            var owner = player.AIData?.BotOwner;
+            var group = owner?.BotsGroup;
             return new Bot
             {
+                Group = group?.Id,
+                Zone = group?.BotZone?.name,
+                IsBoss = owner?.Boss != null && owner.Boss.IamBoss,
                 Position = player.Position,
                 Rotation = player.Rotation,
                 Side = (int)player.Profile.Side,
@@ -143,6 +148,9 @@ namespace RaidRecovery.Client.Raid
                     Role = bot.Role,
                     Difficulty = bot.Difficulty,
                     HuntsPlayer = bot.HuntsPlayer,
+                    Group = bot.Group,
+                    Zone = bot.Zone,
+                    IsBoss = bot.IsBoss,
                     Profile = new JRaw(bot.Descriptor.ToJson()),
                 })
                 .ToList();
@@ -161,6 +169,9 @@ namespace RaidRecovery.Client.Raid
             public int Role;
             public int Difficulty;
             public bool HuntsPlayer;
+            public int? Group;
+            public string Zone;
+            public bool IsBoss;
             public ProfileDescriptor Descriptor;
         }
     }

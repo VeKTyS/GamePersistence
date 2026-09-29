@@ -37,7 +37,9 @@ namespace RaidRecovery.Client.Recovery
                             + $"distance {Vector3.Distance(other.Position, player.Position):0} m, "
                             + $"player is enemy of its group: {group?.Enemies?.ContainsKey(player)}, "
                             + $"player is neutral: {group?.Neutrals?.ContainsKey(player)}, "
-                            + $"group enemies {group?.Enemies?.Count}, has a target: {owner.Memory?.GoalEnemy != null}"
+                            + $"group enemies {group?.Enemies?.Count}, has a target: {owner.Memory?.GoalEnemy != null}, "
+                            + $"group {group?.Id} of {group?.MembersCount} in {group?.BotZone?.name}, "
+                            + $"leads: {owner.Boss?.IamBoss} with {owner.Boss?.Followers?.Count} followers, follows a leader: {owner.BotFollower?.HaveBoss}"
                     );
                 }
                 catch (Exception ex)
