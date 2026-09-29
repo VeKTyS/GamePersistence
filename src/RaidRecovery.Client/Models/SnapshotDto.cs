@@ -143,6 +143,33 @@ namespace RaidRecovery.Client.Models
         /// <summary>Kills, experience and counters of the raid so far, serialized by the game.</summary>
         [JsonProperty("stats", NullValueHandling = NullValueHandling.Ignore)]
         public JRaw Stats { get; set; }
+
+        [JsonProperty("stance", NullValueHandling = NullValueHandling.Ignore)]
+        public StanceDto Stance { get; set; }
+    }
+
+    /// <summary>How the player stood: posture, breath, and what they held.</summary>
+    internal sealed class StanceDto
+    {
+        /// <summary>Height of the character, from 0 (crouched) to 1 (standing).</summary>
+        [JsonProperty("poseLevel")]
+        public float PoseLevel { get; set; } = 1f;
+
+        [JsonProperty("prone")]
+        public bool Prone { get; set; }
+
+        [JsonProperty("stamina")]
+        public float? Stamina { get; set; }
+
+        [JsonProperty("handsStamina")]
+        public float? HandsStamina { get; set; }
+
+        [JsonProperty("oxygen")]
+        public float? Oxygen { get; set; }
+
+        /// <summary>Identifier of the item held, absent with empty hands.</summary>
+        [JsonProperty("inHands", NullValueHandling = NullValueHandling.Ignore)]
+        public string InHands { get; set; }
     }
 
     internal sealed class PositionDto
@@ -246,5 +273,8 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("side")]
         public string Side { get; set; }
+
+        [JsonProperty("stance")]
+        public StanceDto Stance { get; set; }
     }
 }

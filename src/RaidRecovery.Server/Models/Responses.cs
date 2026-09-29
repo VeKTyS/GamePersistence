@@ -83,6 +83,10 @@ public record RestoreResponse
     /// <summary>Pmc or Savage: the character the raid must be relaunched with.</summary>
     [JsonPropertyName("side")]
     public string? Side { get; init; }
+
+    /// <summary>Posture, breath and item in hands, handed back as the game sent them.</summary>
+    [JsonPropertyName("stance")]
+    public JsonElement? Stance { get; init; }
 }
 
 public record DiscardResponse

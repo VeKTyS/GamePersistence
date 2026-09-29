@@ -14,7 +14,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.oceane.raidrecovery";
-        public const string Version = "0.11.1";
+        public const string Version = "0.12.0";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;
@@ -34,6 +34,8 @@ namespace RaidRecovery.Client
         internal static ConfigEntry<bool> KeepBots { get; private set; }
 
         internal static ConfigEntry<bool> KeepLoot { get; private set; }
+
+        internal static ConfigEntry<bool> BotsRememberPlayer { get; private set; }
 
         internal static ConfigEntry<bool> GameScreen { get; private set; }
 
@@ -109,6 +111,13 @@ namespace RaidRecovery.Client
                 "Use the return-to-raid screen of the game",
                 true,
                 "Offers the recovery on the screen the live game shows after a disconnection. When off, or if that screen cannot be opened, a plain window is used."
+            );
+
+            BotsRememberPlayer = Config.Bind(
+                "Recovery",
+                "Bots that were after you still are",
+                false,
+                "When on, a bot that was chasing you when the raid was cut chases you again as soon as it is back. When off, it comes back unaware of you, which gives you time to settle in."
             );
 
             KeepLoot = Config.Bind(

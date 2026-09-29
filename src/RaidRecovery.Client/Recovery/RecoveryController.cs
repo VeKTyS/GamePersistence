@@ -206,6 +206,8 @@ namespace RaidRecovery.Client.Recovery
 
             // After the game's own start: doors and extractions are initialized by then
             WorldRestorer.Apply(world, player, ticket.World);
+            StanceRestorer.Apply(player, ticket.Stance);
+
             try
             {
                 StatsRestorer.Apply(player, ticket.Stats?.ToString());

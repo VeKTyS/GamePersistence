@@ -292,6 +292,7 @@ namespace RaidRecovery.Client.Raid
                 {
                     Position = new PositionDto { X = character.Position.x, Y = character.Position.y, Z = character.Position.z },
                     Rotation = new RotationDto { Yaw = character.Rotation.x, Pitch = character.Rotation.y },
+                    Stance = ReadStance(player),
                 },
             };
         }
@@ -306,6 +307,29 @@ namespace RaidRecovery.Client.Raid
             }
 
             return Math.Max(0, (int)timer.EscapeTimeSeconds());
+        }
+
+        /// <summary>null if it cannot be read: the snapshot goes without it, the player comes back standing and rested.</summary>
+        private static StanceDto ReadStance(Player player)
+        {
+            try
+            {
+                var movement = player.MovementContext;
+                return new StanceDto
+                {
+                    PoseLevel = movement?.PoseLevel ?? 1f,
+                    Prone = movement != null && movement.IsInPronePose,
+                    Stamina = player.Physical?.Stamina?.Current,
+                    HandsStamina = player.Physical?.HandsStamina?.Current,
+                    Oxygen = player.Physical?.Oxygen?.Current,
+                    InHands = player.HandsController?.Item?.Id,
+                };
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Posture not read: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>Time played in this raid, from its own start. A resumed raid counts from its resume.</summary>

@@ -90,6 +90,7 @@ public class RaidRecoveryCallbacks(
                 Bots = snapshot.Bots,
                 Stats = snapshot.Player?.Stats,
                 Side = snapshot.Raid?.Side,
+                Stance = snapshot.Player?.Stance,
             }
         );
     }

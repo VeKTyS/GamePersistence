@@ -63,6 +63,10 @@ public record PlayerState
     /// </summary>
     [JsonPropertyName("stats")]
     public JsonElement? Stats { get; init; }
+
+    /// <summary>Posture, breath and item in hands. Only the game reads them.</summary>
+    [JsonPropertyName("stance")]
+    public JsonElement? Stance { get; init; }
 }
 
 public record Position

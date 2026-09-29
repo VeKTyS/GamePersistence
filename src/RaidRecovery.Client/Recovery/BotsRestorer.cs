@@ -143,7 +143,8 @@ namespace RaidRecovery.Client.Recovery
                     }
 
                     RestoredIds.Add(owner.GetPlayer.ProfileId);
-                    if (bot.HuntsPlayer)
+                    // Off by default: coming back to a raid with a bot already on your heels is no way to settle in
+                    if (bot.HuntsPlayer && Plugin.BotsRememberPlayer.Value)
                     {
                         Hunt(owner);
                     }

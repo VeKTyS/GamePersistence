@@ -55,6 +55,7 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 - Inventory, including the loot found during the raid
 - Health, hydration and energy
 - Position and view direction
+- Posture (standing, crouched, lying down), stamina, and the item you held
 - Skills, achievements, trader standing, wish list
 - Quest progress and examined items
 - Kills, experience and counters of the raid so far: the end-of-raid screen counts the whole raid
@@ -76,7 +77,8 @@ A snapshot that is more than 24 hours old is ignored and deleted.
 **The bots**
 
 - Bots that were alive come back with their gear, their health and their position
-- A bot that was after you goes after you again
+- A bot comes back unaware of you, so that you have time to settle in. A setting makes it chase you
+  again if it was doing so
 - Bodies are where they fell, with what they carried
 - Bots that already spawned do not spawn a second time
 
@@ -96,6 +98,7 @@ Press F12 in the game and look for Raid Recovery.
 | Use the return-to-raid screen of the game | on | When off, a plain window is shown instead |
 | Keep the loot as the game sees it | on | When off, only the items you carry are removed from the loot |
 | Keep bots and bodies | on | When off, the resumed raid spawns new bots |
+| Bots that were after you still are | off | When on, a bot that was chasing you chases you again as soon as it is back |
 | Log measurements | on | Writes the cost and size of each snapshot to the log |
 
 The last four are also a way out: if a resumed raid misbehaves, turning one of them off tells which part is
@@ -125,8 +128,10 @@ the profile you had before it.
   is applied to the profile.
 - **The raid preparation screen is skipped on relaunch.** Mods that hook into that screen do not run for
   the resumed raid.
-- **A restored bot loses its alert state and its group.** It comes back where it stood and goes after you
-  again if it was doing so, but it behaves like a bot that just spawned.
+- **A restored bot loses its alert state and its group.** It comes back where it stood, and behaves like a
+  bot that just spawned.
+- **What was in motion is not restored, on purpose.** A grenade in the air, a bot in the middle of an
+  action: the raid resumes calm.
 - **A stack you only took part of comes back whole.** Take 20 rounds out of a stack of 60 and the 60 are
   there again.
 - **A half-searched container comes back fully searched.**
