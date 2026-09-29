@@ -8,7 +8,7 @@ using SPTarkov.Server.Core.Utils;
 namespace RaidRecovery.Server.Routers;
 
 /// <summary>
-/// The four routes specific to the mod. Nobody else answers these URLs, so Routers + 1 as the 4.1 docs prescribe.
+/// The routes specific to the mod. Nobody else answers these URLs, so Routers + 1 as the 4.1 docs prescribe.
 /// </summary>
 [Injectable(TypePriority = OnLoadOrder.Routers + 1)]
 public class RaidRecoveryRouter(JsonUtil jsonUtil, RaidRecoveryCallbacks callbacks)
@@ -31,6 +31,10 @@ public class RaidRecoveryRouter(JsonUtil jsonUtil, RaidRecoveryCallbacks callbac
                 Routes.Discard,
                 async (url, info, sessionId, output, cancellationToken) => await callbacks.Discard(sessionId)
             ),
+            new RouteAction<ResumedRequest>(
+                Routes.Resumed,
+                async (url, info, sessionId, output, cancellationToken) => await callbacks.Resumed(info)
+            ),
         ]
     ) { }
 
@@ -40,6 +44,7 @@ public static class Routes
     public const string Pending = "/raid-recovery/pending";
     public const string Restore = "/raid-recovery/restore";
     public const string Discard = "/raid-recovery/discard";
+    public const string Resumed = "/raid-recovery/resumed";
 
     public const string RaidStart = "/client/match/local/start";
     public const string RaidEnd = "/client/match/local/end";

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Comfort.Common;
 using EFT;
 using EFT.Communications;
+using RaidRecovery.Client.Api;
 using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
@@ -26,6 +27,8 @@ namespace RaidRecovery.Client.Recovery
             Restoring,
             ReloadingMenu,
             Launching,
+            // The raid was left with the gear carried: the menu is reloaded to show it, nothing is launched
+            Keeping,
         }
 
         private const int WindowId = 0x52524543;
@@ -40,6 +43,10 @@ namespace RaidRecovery.Client.Recovery
         private bool _checkDue = true;
         private PendingResult _offer;
         private RestoreResult _ticket;
+
+        // Only set for a raid played with others: what the coordinator was told, and what it answered
+        private InterruptedRaid _raid;
+        private ResumeWay _way = ResumeWay.Restored;
 
         private const int MinimumResumedSeconds = 60;
 
@@ -95,6 +102,13 @@ namespace RaidRecovery.Client.Recovery
             {
                 // The menu was just reloaded with the restored profile: the raid can be relaunched
                 Launch();
+                return;
+            }
+
+            if (_step == Step.Keeping)
+            {
+                _step = Step.Idle;
+                Notify("Raid left: you keep the gear you carried at the last snapshot.");
                 return;
             }
 
@@ -332,21 +346,7 @@ namespace RaidRecovery.Client.Recovery
                     return;
                 }
 
-                _mainThread.Enqueue(() =>
-                {
-                    _offer = pending;
-                    if (Plugin.GameScreen.Value && ReturnToRaidScreen.TryShow(pending.Map, pending.Side, Resume, Discard))
-                    {
-                        _fixWarningAt = Time.unscaledTime + WarningDelaySeconds;
-                        // The game draws the choice: our own window stays closed
-                        _step = Step.Choosing;
-                        Plugin.Log.LogInfo("Return-to-raid screen of the game shown");
-                        return;
-                    }
-
-                    _step = Step.Offering;
-                    Plugin.Log.LogInfo("Recovery window shown");
-                });
+                _mainThread.Enqueue(() => Offer(pending));
             }
             catch (Exception ex)
             {
@@ -354,7 +354,100 @@ namespace RaidRecovery.Client.Recovery
             }
         }
 
+        /// <summary>Shows the choice between going back to the raid and leaving it.</summary>
+        private void Offer(PendingResult pending)
+        {
+            _offer = pending;
+            if (Plugin.GameScreen.Value && ReturnToRaidScreen.TryShow(pending.Map, pending.Side, Resume, Discard))
+            {
+                _fixWarningAt = Time.unscaledTime + WarningDelaySeconds;
+                // The game draws the choice: our own window stays closed
+                _step = Step.Choosing;
+                Plugin.Log.LogInfo("Return-to-raid screen of the game shown");
+                return;
+            }
+
+            _step = Step.Offering;
+            Plugin.Log.LogInfo("Recovery window shown");
+        }
+
+        private static InterruptedRaid Describe(PendingResult offer)
+        {
+            return new InterruptedRaid
+            {
+                Map = offer.Map,
+                Side = offer.Side,
+                Coop = offer.Coop,
+                SavedAt = offer.SavedAt,
+            };
+        }
+
         private void Resume()
+        {
+            var coordinator = CoopGuard.Coordinator;
+            var offer = _offer;
+            if (coordinator == null || offer == null)
+            {
+                RestoreFromServer();
+                return;
+            }
+
+            _step = Step.Restoring;
+            RaidLauncher.Watch(ResumeWithAsync(coordinator, offer), "Recovery");
+        }
+
+        /// <summary>
+        /// A raid played with others: the coordinator is asked first, before anything is restored. A player
+        /// told to wait must still be able to leave and get back the character of before the raid.
+        /// </summary>
+        private async Task ResumeWithAsync(ICoopCoordinator coordinator, PendingResult offer)
+        {
+            var raid = Describe(offer);
+            ResumeAnswer answer;
+            try
+            {
+                // No ConfigureAwait(false): what follows touches the screens of the game
+                answer = await coordinator.BeforeResumeAsync(raid) ?? ResumeAnswer.Restore;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"{coordinator.Name} could not say how to go back to the raid: {ex}");
+                answer = ResumeAnswer.Refuse($"Raid not resumed: {ex.Message}");
+            }
+
+            _mainThread.Enqueue(() =>
+            {
+                _raid = raid;
+                _way = answer.Way;
+                switch (answer.Way)
+                {
+                    case ResumeWay.Refused:
+                        Plugin.Log.LogWarning($"{coordinator.Name} refused the recovery: {answer.Reason}");
+                        Notify(answer.Reason ?? "The raid cannot be resumed now.");
+                        // The snapshot is untouched: the same choice is offered again
+                        Offer(offer);
+                        return;
+
+                    case ResumeWay.Handled:
+                        Plugin.Log.LogInfo($"{coordinator.Name} brings the player back by itself: nothing is restored");
+                        _ticket = new RestoreResult
+                        {
+                            Restored = true,
+                            Map = offer.Map,
+                            Side = offer.Side,
+                            DateTime = offer.DateTime,
+                        };
+                        Launch();
+                        return;
+
+                    default:
+                        RestoreFromServer();
+                        return;
+                }
+            });
+        }
+
+        private void RestoreFromServer()
         {
             _step = Step.Restoring;
             Task.Run(async () =>
@@ -407,7 +500,7 @@ namespace RaidRecovery.Client.Recovery
             _step = Step.Launching;
             try
             {
-                RaidLauncher.Start(ticket.Map, ticket.DateTime, ticket.Side);
+                RaidLauncher.Start(ticket.Map, ticket.DateTime, ticket.Side, _raid, _way, OnLaunchFailed);
                 Plugin.Log.LogInfo($"Raid relaunched on {ticket.Map}");
             }
             catch (Exception ex)
@@ -419,7 +512,87 @@ namespace RaidRecovery.Client.Recovery
             }
         }
 
+        /// <summary>
+        /// The raid played with others could not be launched: the host left in between, or cannot be
+        /// reached. Called from the thread the launch failed on.
+        /// </summary>
+        private void OnLaunchFailed(Exception failure)
+        {
+            _mainThread.Enqueue(() =>
+            {
+                _ticket = null;
+                _step = Step.Idle;
+                Notify($"The raid could not be joined: {failure.Message}");
+                if (_offer != null)
+                {
+                    Offer(_offer);
+                }
+            });
+        }
+
         private void Discard()
+        {
+            var coordinator = CoopGuard.Coordinator;
+            var offer = _offer;
+            if (coordinator == null || offer == null)
+            {
+                DiscardOnServer();
+                return;
+            }
+
+            _step = Step.Restoring;
+            RaidLauncher.Watch(LeaveWithAsync(coordinator, offer), "Leaving the raid");
+        }
+
+        /// <summary>
+        /// A raid played with others and left for good. When the others went on without this player, the
+        /// raid did happen: they keep what they carried. When nobody went on, it is as if it never started.
+        /// </summary>
+        private async Task LeaveWithAsync(ICoopCoordinator coordinator, PendingResult offer)
+        {
+            bool keeps;
+            try
+            {
+                keeps = await coordinator.LeaveKeepsGearAsync(Describe(offer));
+            }
+            catch (Exception ex)
+            {
+                // The safe side: the character of before the raid, which is what leaving gives alone
+                Plugin.Log.LogError($"{coordinator.Name} could not say what leaving gives, the raid is discarded: {ex}");
+                keeps = false;
+            }
+
+            if (!keeps)
+            {
+                _mainThread.Enqueue(DiscardOnServer);
+                return;
+            }
+
+            try
+            {
+                var result = await RecoveryApi.RestoreAsync().ConfigureAwait(false);
+                if (result == null || !result.Restored)
+                {
+                    _mainThread.Enqueue(() => Fail($"The gear could not be kept: {result?.Reason ?? "no response"}"));
+                    return;
+                }
+
+                await RecoveryApi.DiscardAsync().ConfigureAwait(false);
+                _mainThread.Enqueue(() =>
+                {
+                    _offer = null;
+                    _step = Step.Keeping;
+                    Plugin.Log.LogInfo("Raid left with the gear of the last snapshot, reloading the menu");
+                    RaidLauncher.ReloadMenu();
+                });
+            }
+            catch (Exception ex)
+            {
+                _mainThread.Enqueue(() => Fail($"The gear could not be kept: {ex.Message}"));
+            }
+        }
+
+        private void DiscardOnServer()
         {
             _step = Step.Idle;
             _offer = null;

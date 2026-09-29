@@ -28,7 +28,9 @@ namespace RaidRecovery.Client.Recovery
             return string.Equals(side, ScavSide, StringComparison.OrdinalIgnoreCase);
         }
 
-        public static void Start(string map, string dateTime, string side)
+        /// <param name="raid">The raid as the coordinator knows it. null for a raid played alone.</param>
+        /// <param name="onFailure">Called if the raid played with others cannot be launched after all.</param>
+        public static void Start(string map, string dateTime, string side, InterruptedRaid raid, ResumeWay way, Action<Exception> onFailure)
         {
             var app = ClientAppUtils.GetMainApp() ?? throw new InvalidOperationException("Game application not found");
 
@@ -58,7 +60,9 @@ namespace RaidRecovery.Client.Recovery
                 return;
             }
 
-            Watch(StartWithAsync(coordinator, app, settings, location, map), "Raid launch");
+            var launch = StartWithAsync(coordinator, app, settings, location, map, raid, way);
+            Watch(launch, "Raid launch");
+            launch.ContinueWith(t => onFailure?.Invoke(t.Exception.GetBaseException()), TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
@@ -70,12 +74,14 @@ namespace RaidRecovery.Client.Recovery
             EFT.TarkovApplication app,
             EFT.RaidSettings settings,
             LocationSettings.Location location,
-            string map
+            string map,
+            InterruptedRaid raid,
+            ResumeWay way
         )
         {
             settings.SelectedLocation = location;
             // No ConfigureAwait(false): what follows calls the game, which only answers on the main thread
-            await coordinator.BeforeLaunchAsync(settings);
+            await coordinator.BeforeLaunchAsync(raid ?? new InterruptedRaid { Map = map }, settings, way);
             Plugin.Log.LogInfo($"{coordinator.Name} is ready, launching the raid");
             await app.InternalStartGame(map, true, true);
         }

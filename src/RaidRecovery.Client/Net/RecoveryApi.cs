@@ -15,6 +15,7 @@ namespace RaidRecovery.Client.Net
         private const string PendingRoute = "/raid-recovery/pending";
         private const string RestoreRoute = "/raid-recovery/restore";
         private const string DiscardRoute = "/raid-recovery/discard";
+        private const string ResumedRoute = "/raid-recovery/resumed";
 
         private const string EmptyBody = "{}";
 
@@ -34,6 +35,13 @@ namespace RaidRecovery.Client.Net
         {
             var json = await RequestHandler.PostJsonAsync(RestoreRoute, EmptyBody).ConfigureAwait(false);
             return Read<RestoreResult>(json);
+        }
+
+        public static async Task<ResumedResult> GetResumedAsync(string profileId)
+        {
+            var body = JsonConvert.SerializeObject(new ResumedQuery { ProfileId = profileId });
+            var json = await RequestHandler.PostJsonAsync(ResumedRoute, body).ConfigureAwait(false);
+            return Read<ResumedResult>(json);
         }
 
         public static Task DiscardAsync()

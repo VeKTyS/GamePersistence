@@ -39,6 +39,28 @@ public record PendingResponse
     /// <summary>Pmc or Savage: the character the raid was played with.</summary>
     [JsonPropertyName("side")]
     public string? Side { get; init; }
+
+    /// <summary>Time slot of the raid. A raid played with others can only be joined on the same one.</summary>
+    [JsonPropertyName("dateTime")]
+    public string? DateTime { get; init; }
+
+    /// <summary>Who this player was in a raid played with others, as the co-op mod wrote it.</summary>
+    [JsonPropertyName("coop")]
+    public string? Coop { get; init; }
+}
+
+/// <summary>When a player last resumed a raid. Asked by those who played it with them.</summary>
+public record ResumedRequest : SPTarkov.Server.Core.Models.Utils.IRequestData
+{
+    [JsonPropertyName("profileId")]
+    public string? ProfileId { get; init; }
+}
+
+public record ResumedResponse
+{
+    /// <summary>Absent if that player resumed nothing since the server started.</summary>
+    [JsonPropertyName("resumedAt")]
+    public DateTimeOffset? ResumedAt { get; init; }
 }
 
 /// <summary>

@@ -40,6 +40,13 @@ public record Snapshot : IRequestData
 
     [JsonPropertyName("bots")]
     public JsonElement? Bots { get; init; }
+
+    /// <summary>
+    /// Written by the mod that plays raids with others, and only read by it: who this player was in the
+    /// raid. Absent for a raid played alone.
+    /// </summary>
+    [JsonPropertyName("coop")]
+    public string? Coop { get; init; }
 }
 
 public record PlayerState

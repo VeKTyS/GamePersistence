@@ -48,5 +48,19 @@ namespace RaidRecovery.Client.Coop
 
             return coordinatorDeclared && coordinatorSaves;
         }
+
+        /// <summary>
+        /// Whether a snapshot is due. The player who holds the world follows the clock. The others only
+        /// save when asked: they are asked by the one who holds the world, so that all are read together.
+        /// </summary>
+        public static bool IsDue(bool holdsTheWorld, bool requested, bool capturedOnce, float now, float lastCaptureAt, float interval)
+        {
+            if (requested)
+            {
+                return true;
+            }
+
+            return holdsTheWorld && (!capturedOnce || now >= lastCaptureAt + interval);
+        }
     }
 }

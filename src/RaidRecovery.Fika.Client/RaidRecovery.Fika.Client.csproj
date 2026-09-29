@@ -37,12 +37,26 @@
       <HintPath>$(SptBepInExPath)\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="spt-reflection">
+      <HintPath>$(SptBepInExPath)\plugins\spt\spt-reflection.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(SptManagedPath)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Comfort">
       <HintPath>$(SptManagedPath)\Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The raid of Fika implements an interface of this library -->
+    <Reference Include="DissonanceVoip">
+      <HintPath>$(SptManagedPath)\DissonanceVoip.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- The "join" function of Fika takes the button that was clicked -->
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(SptManagedPath)\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">

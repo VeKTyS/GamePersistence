@@ -52,8 +52,15 @@ public class RaidRecoveryCallbacks(
                 Restorable = ProfileRestorer.IsRestorable(snapshot) && refusal is null,
                 Side = snapshot.Raid?.Side,
                 Reason = refusal,
+                DateTime = snapshot.Raid?.DateTime,
+                Coop = snapshot.Coop,
             }
         );
+    }
+
+    public ValueTask<string> Resumed(ResumedRequest request)
+    {
+        return Body(new ResumedResponse { ResumedAt = host.Service.LastResume(request?.ProfileId) });
     }
 
     public async ValueTask<string> Restore(MongoId sessionId, CancellationToken cancellationToken)

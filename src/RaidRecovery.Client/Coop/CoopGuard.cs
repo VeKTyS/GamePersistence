@@ -21,13 +21,40 @@ namespace RaidRecovery.Client.Coop
         /// </summary>
         public static bool IsStoodDown => CoopPolicy.StandsDown(CoopMod, Coordinator != null);
 
-        /// <summary>Whether the raid that starts is saved by this player.</summary>
-        public static bool SavesThisRaid
+        /// <summary>What this player saves of the raid that starts.</summary>
+        public static CaptureScope ScopeOfThisRaid
         {
             get
             {
+                // Alone, the coordinator has no say: a raid of the game is saved whole
+                if (CoopMod == null)
+                {
+                    return CaptureScope.Everything;
+                }
+
                 var coordinator = Coordinator;
-                return CoopPolicy.SavesRaid(CoopMod, coordinator != null, coordinator != null && Asks(coordinator));
+                var asked = coordinator == null ? CaptureScope.Nothing : Asks(coordinator);
+                return CoopPolicy.SavesRaid(CoopMod, coordinator != null, asked != CaptureScope.Nothing) ? asked : CaptureScope.Nothing;
+            }
+        }
+
+        /// <summary>Who this player is in the raid in progress, or null alone.</summary>
+        public static string DescribeThisRaid()
+        {
+            var coordinator = Coordinator;
+            if (coordinator == null || CoopMod == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return coordinator.DescribeThisRaid();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"{coordinator.Name} could not describe this raid: {ex}");
+                return null;
             }
         }
 
@@ -67,16 +94,16 @@ namespace RaidRecovery.Client.Coop
         }
 
         /// <summary>The coordinator is code of another mod: its failure must not cost the start of the raid.</summary>
-        private static bool Asks(ICoopCoordinator coordinator)
+        private static CaptureScope Asks(ICoopCoordinator coordinator)
         {
             try
             {
-                return coordinator.SavesThisRaid;
+                return coordinator.ScopeOfThisRaid;
             }
             catch (Exception ex)
             {
                 Plugin.Log.LogError($"{coordinator.Name} could not say whether this raid is saved, it is not: {ex}");
-                return false;
+                return CaptureScope.Nothing;
             }
         }
     }

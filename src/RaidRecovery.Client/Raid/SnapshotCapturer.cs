@@ -8,6 +8,7 @@ using Comfort.Common;
 using EFT;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using RaidRecovery.Client.Api;
 using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
@@ -38,6 +39,10 @@ namespace RaidRecovery.Client.Raid
         private bool _captureRequested;
         private bool _stopped;
 
+        // false for a player who joined the raid of another: the map, the loot and the bots are not theirs to save
+        private bool _holdsTheWorld = true;
+        private string _coop;
+
         // What one frame may give to the read. At 60 frames per second a frame lasts 16 ms.
         private const double FrameBudgetMs = 3.0;
 
@@ -66,13 +71,16 @@ namespace RaidRecovery.Client.Raid
                 return;
             }
 
-            if (!CoopGuard.SavesThisRaid)
+            var scope = CoopGuard.ScopeOfThisRaid;
+            if (scope == CaptureScope.Nothing)
             {
-                Plugin.Log.LogInfo($"Raid on {gameWorld.LocationId} joined, not hosted: it is not saved from here");
+                Plugin.Log.LogInfo($"Raid on {gameWorld.LocationId}: it is not saved from here");
                 return;
             }
 
             var capturer = gameWorld.gameObject.AddComponent<SnapshotCapturer>();
+            capturer._holdsTheWorld = scope == CaptureScope.Everything;
+            capturer._coop = CoopGuard.DescribeThisRaid();
             capturer._gameWorld = gameWorld;
             capturer._startedAt = DateTime.UtcNow;
             capturer._sessionId = capturer._startedAt.ToString("yyyyMMddHHmmss");
@@ -80,7 +88,11 @@ namespace RaidRecovery.Client.Raid
             capturer._dateTime = ClientAppUtils.GetMainApp()?._raidSettings?.SelectedDateTime.ToString();
             Current = capturer;
 
-            Plugin.Log.LogInfo($"Capture started on {gameWorld.LocationId}, raid {capturer._sessionId}");
+            Plugin.Log.LogInfo(
+                capturer._holdsTheWorld
+                    ? $"Capture started on {gameWorld.LocationId}, raid {capturer._sessionId}"
+                    : $"Capture of the character started on {gameWorld.LocationId}, raid {capturer._sessionId}: the map is saved by the host"
+            );
         }
 
         /// <summary>Normal end of the raid: the server purges on its side, we only stop sending.</summary>
@@ -141,8 +153,7 @@ namespace RaidRecovery.Client.Raid
 
             // The interval is read again on every frame: a change in the menu applies to the wait in progress
             var interval = Mathf.Clamp(Plugin.IntervalSeconds.Value, Plugin.MinIntervalSeconds, Plugin.MaxIntervalSeconds);
-            var due = !_capturedOnce || Time.unscaledTime >= _lastCaptureAt + interval;
-            if (!due && !_captureRequested)
+            if (!CoopPolicy.IsDue(_holdsTheWorld, _captureRequested, _capturedOnce, Time.unscaledTime, _lastCaptureAt, interval))
             {
                 return;
             }
@@ -197,7 +208,7 @@ namespace RaidRecovery.Client.Raid
 
             try
             {
-                if (Plugin.KeepBots.Value)
+                if (Plugin.KeepBots.Value && _holdsTheWorld)
                 {
                     bots = new BotsCapture();
                     var captured = bots;
@@ -223,7 +234,7 @@ namespace RaidRecovery.Client.Raid
             }
 
             LootCapture loot = null;
-            if (Plugin.KeepLoot.Value)
+            if (Plugin.KeepLoot.Value && _holdsTheWorld)
             {
                 try
                 {
@@ -247,11 +258,22 @@ namespace RaidRecovery.Client.Raid
                 {
                     snapshot = Describe(player, character);
                     snapshot.World = _world.Take(_gameWorld, player);
+                    if (!_holdsTheWorld)
+                    {
+                        // Doors and extractions are the host's: put back from here, they would differ from its own
+                        snapshot.World.Objects.Clear();
+                        snapshot.World.Exfils.Clear();
+                    }
                 }
             );
 
             _pass = pass;
             _finish = () => Task.Run(() => SendAsync(snapshot, character, bots, loot, pass));
+            if (_holdsTheWorld)
+            {
+                RaidRecoveryApi.RaiseSnapshotStarted();
+            }
+
             return true;
         }
 
@@ -286,6 +308,7 @@ namespace RaidRecovery.Client.Raid
             {
                 SessionId = _sessionId,
                 Map = _gameWorld.LocationId,
+                Coop = _coop,
                 Raid = new RaidDto
                 {
                     StartedAt = _startedAt,

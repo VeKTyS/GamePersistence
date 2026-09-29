@@ -36,6 +36,10 @@ public sealed class RaidRecoveryService(SnapshotStore store, TimeProvider clock,
     // server restarts in between, the next raid start takes the snapshot for a leftover and purges it.
     private readonly HashSet<string> _resuming = [];
 
+    // When each player last resumed a raid. In memory only: after a restart of the server, those who
+    // played with them are told the host is not back, and wait.
+    private readonly Dictionary<string, DateTimeOffset> _lastResume = [];
+
     public SaveOutcome Save(string profileId, Snapshot? snapshot)
     {
         if (!SnapshotStore.IsValidProfileId(profileId))
@@ -123,6 +127,7 @@ public sealed class RaidRecoveryService(SnapshotStore store, TimeProvider clock,
             lock (_gate)
             {
                 _resuming.Add(profileId);
+                _lastResume[profileId] = clock.GetUtcNow();
             }
 
             return new RestoreResult(snapshot, null);
@@ -130,6 +135,20 @@ public sealed class RaidRecoveryService(SnapshotStore store, TimeProvider clock,
         finally
         {
             _restoreGate.Release();
+        }
+    }
+
+    /// <summary>When this player last resumed a raid, or null. Asked by the players who were in it.</summary>
+    public DateTimeOffset? LastResume(string? profileId)
+    {
+        if (profileId is null || !SnapshotStore.IsValidProfileId(profileId))
+        {
+            return null;
+        }
+
+        lock (_gate)
+        {
+            return _lastResume.TryGetValue(profileId, out var at) ? at : null;
         }
     }
 

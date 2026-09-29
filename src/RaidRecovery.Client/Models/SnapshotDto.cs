@@ -37,6 +37,10 @@ namespace RaidRecovery.Client.Models
         /// </summary>
         [JsonProperty("bots")]
         public List<BotDto> Bots { get; set; }
+
+        /// <summary>Who the player was in a raid played with others, as the co-op mod wrote it. Absent alone.</summary>
+        [JsonProperty("coop", NullValueHandling = NullValueHandling.Ignore)]
+        public string Coop { get; set; }
     }
 
     internal sealed class BotDto
@@ -249,6 +253,24 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("side")]
         public string Side { get; set; }
+
+        [JsonProperty("dateTime")]
+        public string DateTime { get; set; }
+
+        [JsonProperty("coop")]
+        public string Coop { get; set; }
+    }
+
+    internal sealed class ResumedQuery
+    {
+        [JsonProperty("profileId")]
+        public string ProfileId { get; set; }
+    }
+
+    internal sealed class ResumedResult
+    {
+        [JsonProperty("resumedAt")]
+        public DateTimeOffset? ResumedAt { get; set; }
     }
 
     internal sealed class RestoreResult

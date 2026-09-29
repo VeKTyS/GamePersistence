@@ -75,6 +75,28 @@ public class CoopPolicyTests
     }
 
     [Fact]
+    public void The_player_who_holds_the_world_saves_at_once_then_follows_the_clock()
+    {
+        Assert.True(CoopPolicy.IsDue(holdsTheWorld: true, requested: false, capturedOnce: false, now: 5f, lastCaptureAt: 0f, interval: 30f));
+        Assert.False(CoopPolicy.IsDue(holdsTheWorld: true, requested: false, capturedOnce: true, now: 29f, lastCaptureAt: 0f, interval: 30f));
+        Assert.True(CoopPolicy.IsDue(holdsTheWorld: true, requested: false, capturedOnce: true, now: 30f, lastCaptureAt: 0f, interval: 30f));
+    }
+
+    [Fact]
+    public void A_player_who_joined_only_saves_when_asked()
+    {
+        Assert.False(CoopPolicy.IsDue(holdsTheWorld: false, requested: false, capturedOnce: false, now: 5f, lastCaptureAt: 0f, interval: 30f));
+        Assert.False(CoopPolicy.IsDue(holdsTheWorld: false, requested: false, capturedOnce: true, now: 900f, lastCaptureAt: 0f, interval: 30f));
+        Assert.True(CoopPolicy.IsDue(holdsTheWorld: false, requested: true, capturedOnce: true, now: 1f, lastCaptureAt: 0f, interval: 30f));
+    }
+
+    [Fact]
+    public void A_snapshot_asked_by_hand_does_not_wait_for_the_clock()
+    {
+        Assert.True(CoopPolicy.IsDue(holdsTheWorld: true, requested: true, capturedOnce: true, now: 1f, lastCaptureAt: 0f, interval: 30f));
+    }
+
+    [Fact]
     public void With_a_coordinator_a_player_who_joined_does_not_save_the_raid()
     {
         Assert.False(CoopPolicy.StandsDown(Fika, coordinatorDeclared: true));
