@@ -46,6 +46,15 @@ public class ProfileRestorer(
         return string.Equals(snapshot.Raid?.Side, side, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The scav of the profile is not the one of the snapshot when their gear does not carry the same
+    /// identifier. A PMC keeps its own for life; SPT makes a new scav, with new identifiers, after each scav raid.
+    /// </summary>
+    public static bool IsAnotherScav(string? gearOfProfile, string? gearOfSnapshot)
+    {
+        return !string.IsNullOrEmpty(gearOfSnapshot) && !string.Equals(gearOfProfile, gearOfSnapshot, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <returns>null if the profile was updated and saved, otherwise the reason for the failure.</returns>
     public async Task<string?> ApplyAsync(MongoId sessionId, Snapshot snapshot, CancellationToken cancellationToken)
     {
@@ -142,7 +151,20 @@ public class ProfileRestorer(
         {
             // Written as it is, like SPT does for a scav: its health is not rebuilt from the changes of the raid
             scav.Health = captured.Health;
-            inRaidHelper.SetInventory(sessionId, scav, captured, isSurvived: true, isTransfer: false);
+            if (IsAnotherScav(scav.Inventory?.Equipment?.ToString(), captured.Inventory!.Equipment?.ToString()))
+            {
+                // SPT made a new scav since the snapshot. Its function empties the gear of the scav it finds
+                // and adds the items of the raid, which hang from the gear of the old one: the new scav would
+                // be left with a gear that does not exist. The whole inventory of the raid is put back.
+                logger.Warning(
+                    $"[RaidRecovery] The scav was replaced since the snapshot (gear {scav.Inventory?.Equipment} instead of {captured.Inventory.Equipment}): the inventory of the raid is put back whole"
+                );
+                scav.Inventory = captured.Inventory;
+            }
+            else
+            {
+                inRaidHelper.SetInventory(sessionId, scav, captured, isSurvived: true, isTransfer: false);
+            }
 
             if (captured.Skills is not null)
             {

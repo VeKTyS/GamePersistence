@@ -1,56 +1,75 @@
 using System;
 using System.Reflection;
+using System.Threading.Tasks;
 using EFT;
-using EFT.UI;
-using EFT.UI.SessionEnd;
 using SPT.Reflection.Patching;
+using UnityEngine;
 
 namespace RaidRecovery.Fika.Client
 {
     /// <summary>
-    /// A player taken out of a raid whose host is lost did not leave it: the screen that says they did is
-    /// passed at once, the way Fika passes it for a spectator. It is a screen of the game, not of Fika.
+    /// A player taken out of a raid whose host is lost did not end it. The screens the game shows after a
+    /// raid say the opposite: the outcome, the experience, and for a scav the transfer of what it carried,
+    /// which would move into the stash items of a raid that is not over. None of them is shown: the player
+    /// goes straight to the menu. It is a function of the game, not of Fika.
     /// </summary>
     internal sealed class ExitScreenPatch : ModulePatch
     {
-        /// <summary>true from the moment the player is taken out to the moment the screen is passed.</summary>
-        internal static bool PassNext { get; set; }
+        // The screens come a few seconds after the raid is left. Past that, the order is void: it must
+        // never reach the screens of a raid the player ended by themselves.
+        private const float ValidSeconds = 60f;
+
+        private static float _passUntil;
+
+        /// <summary>true from the moment the player is taken out to the moment the screens are passed.</summary>
+        internal static bool PassNext
+        {
+            get => _passUntil > 0f && Time.unscaledTime <= _passUntil;
+            set => _passUntil = value ? Time.unscaledTime + ValidSeconds : 0f;
+        }
 
         protected override MethodBase GetTargetMethod()
         {
-            return typeof(SessionResultExitStatus).GetMethod(
-                nameof(SessionResultExitStatus.Show),
-                new[]
-                {
-                    typeof(Profile),
-                    typeof(PlayerVisualRepresentation),
-                    typeof(ESideType),
-                    typeof(ExitStatus),
-                    typeof(TimeSpan),
-                    typeof(IEftSession),
-                    typeof(bool),
-                }
-            );
+            return typeof(TarkovApplication).GetMethod(nameof(TarkovApplication.ShowSessionResult));
         }
 
-        [PatchPostfix]
-        private static void PatchPostfix(DefaultUIButton ____mainMenuButton)
+        [PatchPrefix]
+        private static bool PatchPrefix(TarkovApplication __instance, ref Task __result)
         {
             if (!PassNext)
             {
-                return;
+                return true;
             }
 
             PassNext = false;
+            Plugin.Log.LogInfo("End-of-raid screens not shown: the player did not end the raid, its host was lost");
+            __result = BackToMenuAsync(__instance);
+            return false;
+        }
+
+        /// <summary>What the game does around its screens: the profiles are read again, then the menu is shown.</summary>
+        private static async Task BackToMenuAsync(TarkovApplication app)
+        {
             try
             {
-                ____mainMenuButton.OnClick.Invoke();
-                Plugin.Log.LogInfo("End-of-raid screen passed: the player did not leave the raid, its host was lost");
+                var session = app.Session;
+                await session.GetProfiles();
+                await DataPrepareOperation.SelectProfile(session);
             }
             catch (Exception ex)
             {
-                // The screen stays: the player closes it by hand and gets to the same menu
-                Plugin.Log.LogWarning($"End-of-raid screen not passed, it has to be closed by hand: {ex}");
+                // The menu reads the profile the game already holds
+                Plugin.Log.LogWarning($"Profiles not read again before the menu: {ex}");
+            }
+
+            try
+            {
+                await app.ComebackToMainMenu();
+                Plugin.Log.LogInfo("Back to the menu, the raid is still open on the server");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"The menu could not be shown after the host was lost: {ex}");
             }
         }
     }

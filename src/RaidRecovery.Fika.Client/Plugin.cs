@@ -24,12 +24,12 @@ namespace RaidRecovery.Fika.Client
     /// when to do it, and carries between the players what the base mod needs.
     /// </summary>
     [BepInPlugin(Guid, "Raid Recovery Fika", Version)]
-    [BepInDependency(RaidRecovery.Client.Plugin.Guid, "1.2.1")]
+    [BepInDependency(RaidRecovery.Client.Plugin.Guid, "1.2.2")]
     [BepInDependency("com.fika.core")]
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.vektys.raidrecovery.fika";
-        public const string Version = "0.2.2";
+        public const string Version = "0.2.3";
 
         // Once the host clicked "Start raid", Fika only lets in the players it already knows
         internal const string WaitForEveryone = "Wait for ALL your players to join before you click \"Start raid\". A player who is not in by then cannot come back into this raid.";
