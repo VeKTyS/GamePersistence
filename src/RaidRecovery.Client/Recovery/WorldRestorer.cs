@@ -80,7 +80,18 @@ namespace RaidRecovery.Client.Recovery
                 return;
             }
 
-            var changed = 0;
+            var changed = ApplyObjects(world.Objects);
+            Plugin.Log.LogInfo($"Doors and switches restored: {changed.Count} changed out of {world.Objects.Count} recorded");
+            if (changed.Count > 0)
+            {
+                Api.RaidRecoveryApi.RaiseDoorsRestored(changed);
+            }
+        }
+
+        /// <summary>Puts doors and switches in the given states. Returns the ones that had to change.</summary>
+        public static Dictionary<string, byte> ApplyObjects(IReadOnlyDictionary<string, byte> states)
+        {
+            var changed = new Dictionary<string, byte>();
             foreach (var item in LocationScene.GetAllObjects<WorldInteractiveObject>())
             {
                 if (item == null || item is LootableContainer || string.IsNullOrEmpty(item.Id))
@@ -88,7 +99,7 @@ namespace RaidRecovery.Client.Recovery
                     continue;
                 }
 
-                if (!world.Objects.TryGetValue(item.Id, out var saved) || (byte)item.DoorState == saved)
+                if (!states.TryGetValue(item.Id, out var saved) || (byte)item.DoorState == saved)
                 {
                     continue;
                 }
@@ -106,10 +117,10 @@ namespace RaidRecovery.Client.Recovery
                     item.SetInitialSyncState(new WorldInteractiveObject.InteractiveObjectStatusInfo(item.Id, state, 0f));
                 }
 
-                changed++;
+                changed[item.Id] = saved;
             }
 
-            Plugin.Log.LogInfo($"Doors and switches restored: {changed} changed out of {world.Objects.Count} recorded");
+            return changed;
         }
 
         private static void RestoreExfils(GameWorld gameWorld, WorldDto world)

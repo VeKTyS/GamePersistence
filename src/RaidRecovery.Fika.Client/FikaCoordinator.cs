@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using EFT;
+using EFT.Communications;
 using Fika.Core.Main.Utils;
 using Fika.Core.Networking.Http;
 using Fika.Core.UI.Custom;
@@ -91,14 +92,17 @@ namespace RaidRecovery.Fika.Client
                 // What the "host" button of Fika does before it lets the game launch the raid
                 await FikaBackendUtils.CreateMatch(profile.ProfileId, FikaBackendUtils.PMCName, settings);
                 Plugin.Log.LogInfo($"Raid declared to Fika on {settings.LocationId}, code {FikaBackendUtils.RaidCode}");
+                NotificationManager.DisplayMessageNotification(Plugin.WaitForEveryone, ENotificationDurationType.Long, ENotificationIconType.Alert);
                 return;
             }
 
             // What the "join" button of Fika does. It shows its own error screen when the host cannot be reached
             var reconnect = way == ResumeWay.Handled;
+            Plugin.Log.LogInfo($"Joining the raid of {host} on {settings.LocationId}, reconnection of Fika: {reconnect}");
             var joined = await MatchMakerUIScript.JoinMatch(profile.ProfileId, host, null, reconnect);
             if (!joined)
             {
+                Plugin.Log.LogError($"Fika could not join the raid of {host}: see the lines of Fika just above");
                 throw new InvalidOperationException("the host could not be reached");
             }
 
@@ -120,6 +124,7 @@ namespace RaidRecovery.Fika.Client
 
             var resumed = RejoinPolicy.HostResumedSince(resumedAt, raid.SavedAt);
             var entries = (raids ?? Array.Empty<LobbyEntry>()).Where(entry => entry.ServerId == host).ToArray();
+            Plugin.Log.LogInfo($"Snapshot of {raid.SavedAt:u} on {raid.Map}, host {host} resumed at {(resumedAt.HasValue ? resumedAt.Value.ToString("u") : "never")}, Fika lists {raids?.Length ?? 0} raid(s), {entries.Length} of this host");
             if (entries.Length == 0)
             {
                 return (resumed, HostRaid.None);
@@ -128,6 +133,7 @@ namespace RaidRecovery.Fika.Client
             var entry = entries[0];
             var dead = false;
             var inRaid = entry.Players != null && entry.Players.TryGetValue(profileId, out dead);
+            Plugin.Log.LogInfo($"Raid of the host: status {entry.Status}, {entry.Players?.Count ?? 0} player(s) known, this player known: {inRaid}, dead: {dead}");
             return (resumed, RejoinPolicy.Read(true, (int)entry.Status, inRaid, dead));
         }
     }

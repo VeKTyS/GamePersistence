@@ -59,6 +59,11 @@
       <HintPath>$(SptManagedPath)\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- The end-of-raid screen of the game is built on a type of this library -->
+    <Reference Include="Sirenix.Serialization">
+      <HintPath>$(SptManagedPath)\Sirenix.Serialization.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>$(SptManagedPath)\UnityEngine.dll</HintPath>
       <Private>false</Private>
