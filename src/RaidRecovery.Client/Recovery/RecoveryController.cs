@@ -166,6 +166,16 @@ namespace RaidRecovery.Client.Recovery
 
             WorldRestorer.RestoreEntryPoint(ticket.World);
 
+            // The countdown is a wait anyway: the bots load during it and are ready when the player is placed
+            try
+            {
+                BotsRestorer.Preload(ticket.Bots);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Could not start loading the bots, they load once the player is placed: {ex}");
+            }
+
             // OnGameStarted fires before the countdown ends. The game then calls Spawn(), which puts the player back
             // on their spawn point: moving now would be overwritten. So we wait for the real start.
             _placement = ticket;

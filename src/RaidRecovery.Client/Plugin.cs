@@ -14,7 +14,7 @@ namespace RaidRecovery.Client
     public class Plugin : BaseUnityPlugin
     {
         public const string Guid = "com.vektys.raidrecovery";
-        public const string Version = "1.2.2";
+        public const string Version = "1.3.0";
 
         public const int MinIntervalSeconds = 15;
         public const int MaxIntervalSeconds = 120;

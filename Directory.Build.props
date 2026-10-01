@@ -5,7 +5,7 @@
     <SptServerPath>$(SptPath)\SPT_Runtime</SptServerPath>
     <SptManagedPath>$(SptPath)\EscapeFromTarkov_Data\Managed</SptManagedPath>
     <SptBepInExPath>$(SptPath)\BepInEx</SptBepInExPath>
-    <ModVersion>1.2.2</ModVersion>
+    <ModVersion>1.3.0</ModVersion>
     <!-- The Fika add-on is a mod of its own, with its own version -->
     <FikaAddonVersion>0.2.3</FikaAddonVersion>
   </PropertyGroup>

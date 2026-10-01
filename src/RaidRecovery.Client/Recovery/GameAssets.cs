@@ -13,8 +13,11 @@ namespace RaidRecovery.Client.Recovery
     /// </summary>
     internal static class GameAssets
     {
-        /// <summary>Same call as the game when it prepares a bot (BotProfileClient.CreateProfile).</summary>
-        public static Task LoadAsync(IEnumerable<ResourceKey> resources)
+        /// <summary>
+        /// Same call as the game when it prepares a bot (BotProfileClient.CreateProfile). Immediate during the loading: the
+        /// game has nothing more urgent to do then. General otherwise.
+        /// </summary>
+        public static Task LoadAsync(IEnumerable<ResourceKey> resources, YieldDelegate priority = null)
         {
             var wanted = resources.Where(resource => resource != null && !string.IsNullOrEmpty(resource.path)).ToArray();
             if (wanted.Length == 0)
@@ -27,7 +30,7 @@ namespace RaidRecovery.Client.Recovery
                 // A raid of SPT is a local one. Asking for the online set fails: it does not exist here.
                 ObjectsFactory.AssemblyType.Local,
                 wanted,
-                JobYieldPriority.General,
+                priority ?? JobYieldPriority.General,
                 null,
                 ObjectsFactory.DefaultCancellationToken
             );

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Comfort.Common;
+using Diz.Jobs;
 using EFT;
 using RaidRecovery.Client.Models;
 using UnityEngine;
@@ -15,12 +17,59 @@ namespace RaidRecovery.Client.Recovery
     internal static class BotsRestorer
     {
         /// <summary>
-        /// One bot after the other: each has to load its look and gear before the game can build it.
-        /// Runs on the main thread, the waits hand the frame back to the game.
+        /// Longest wait, once the player is back in place, for the bots still loading. A load that never ends
+        /// costs only its own bot: the others come back as soon as they are ready.
         /// </summary>
+        private const int LoadTimeoutSeconds = 30;
+
         /// <summary>Profiles of the bots put back in the raid in progress, to tell them from those the game spawned.</summary>
         public static readonly HashSet<string> RestoredIds = new HashSet<string>();
 
+        // The bots being prepared for the raid that is loading, and the snapshot list they come from
+        private static List<PreparedBot> _prepared = new List<PreparedBot>();
+        private static List<BotDto> _preparedFrom;
+
+        /// <summary>
+        /// Starts loading the look and gear of every bot while the raid is still loading, as the game does for
+        /// its own first bots. Each bot loads on its own: one that never ends holds back no other.
+        /// </summary>
+        public static void Preload(List<BotDto> bots)
+        {
+            _prepared = new List<PreparedBot>();
+            _preparedFrom = bots;
+            if (bots == null || bots.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var bot in bots)
+            {
+                // One bot that fails must not cost the others
+                try
+                {
+                    if (bot?.Position == null || bot.Profile == null)
+                    {
+                        continue;
+                    }
+
+                    var profile = new Profile(bot.Profile.ToString().ParseJsonTo<ProfileDescriptor>());
+                    // Without this, the game builds a bot it cannot draw, which then fails on every frame
+                    var load = GameAssets.LoadAsync(profile.GetAllPrefabPaths(false), JobYieldPriority.Immediate);
+                    _prepared.Add(new PreparedBot(bot, profile, load));
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"Bot not restored, its profile cannot be read: {ex}");
+                }
+            }
+
+            Plugin.Log.LogInfo($"Loading {_prepared.Count} bots while the raid loads");
+        }
+
+        /// <summary>
+        /// Once the player is back in place: each bot comes back as soon as it is loaded, leaders before their
+        /// guards, one per frame so that the game does not stall. Runs on the main thread.
+        /// </summary>
         public static async Task ApplyAsync(List<BotDto> bots)
         {
             RestoredIds.Clear();
@@ -28,6 +77,16 @@ namespace RaidRecovery.Client.Recovery
             {
                 return;
             }
+
+            // Not prepared during the loading, or prepared for another list: loaded now
+            if (!ReferenceEquals(_preparedFrom, bots))
+            {
+                Preload(bots);
+            }
+
+            var prepared = _prepared;
+            _prepared = new List<PreparedBot>();
+            _preparedFrom = null;
 
             if (!Singleton<IBotGame>.Instantiated)
             {
@@ -45,20 +104,67 @@ namespace RaidRecovery.Client.Recovery
             var sizes = GroupPlan.Sizes(bots, bot => bot.Group);
             // Zone each group of the snapshot comes back in: its members have to share it to find each other
             var zones = new Dictionary<int, BotZone>();
+            var waiting = GroupPlan.LeadersFirst(prepared, entry => entry.Bot.IsBoss);
+            var ready = prepared.Count(entry => entry.Load.IsCompleted);
+            Plugin.Log.LogInfo($"Putting back {waiting.Count} bots, {ready} already loaded");
+
+            var deadline = Time.realtimeSinceStartup + LoadTimeoutSeconds;
             var spawned = 0;
-            foreach (var bot in GroupPlan.LeadersFirst(bots, bot => bot.IsBoss))
+            while (waiting.Count > 0)
             {
-                // One bot that fails must not cost the others
-                try
+                // The raid ended while the bots were coming back
+                if (!Singleton<IBotGame>.Instantiated || spawner._cancellationTokenSource.IsCancellationRequested)
                 {
-                    if (await SpawnAsync(spawner, bot, sizes, zones))
+                    return;
+                }
+
+                if (Time.realtimeSinceStartup >= deadline)
+                {
+                    foreach (var late in waiting.Where(entry => !entry.Load.IsCompleted).ToList())
                     {
-                        spawned++;
+                        Plugin.Log.LogWarning(
+                            $"Bot {late.Profile.Nickname} ({(WildSpawnType)late.Bot.Role}) not restored: its look and gear were still loading after {LoadTimeoutSeconds} s"
+                        );
+                        waiting.Remove(late);
                     }
                 }
-                catch (Exception ex)
+
+                var now = GroupPlan.ReadyNow(waiting, entry => entry.Load.IsCompleted, entry => entry.Bot.IsBoss, entry => entry.Bot.Group);
+                if (now.Count == 0)
                 {
-                    Plugin.Log.LogError($"Bot not restored: {ex}");
+                    var left = Math.Max(0f, deadline - Time.realtimeSinceStartup);
+                    var loads = waiting.Where(entry => !entry.Load.IsCompleted).Select(entry => entry.Load).ToList();
+                    loads.Add(Task.Delay(TimeSpan.FromSeconds(left)));
+                    await Task.WhenAny(loads);
+                    continue;
+                }
+
+                foreach (var entry in now)
+                {
+                    waiting.Remove(entry);
+                    // One bot that fails must not cost the others
+                    try
+                    {
+                        if (entry.Load.IsFaulted)
+                        {
+                            Plugin.Log.LogError(
+                                $"Bot {entry.Profile.Nickname} not restored, its look and gear failed to load: {entry.Load.Exception?.GetBaseException()}"
+                            );
+                            continue;
+                        }
+
+                        if (Spawn(spawner, entry, sizes, zones))
+                        {
+                            spawned++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.LogError($"Bot not restored: {ex}");
+                    }
+
+                    // One bot per frame: building a bot costs the game a moment
+                    await Task.Yield();
                 }
             }
 
@@ -139,16 +245,11 @@ namespace RaidRecovery.Client.Recovery
             }
         }
 
-        private static async Task<bool> SpawnAsync(BotSpawner spawner, BotDto bot, Dictionary<int, int> sizes, Dictionary<int, BotZone> zones)
+        private static bool Spawn(BotSpawner spawner, PreparedBot entry, Dictionary<int, int> sizes, Dictionary<int, BotZone> zones)
         {
-            if (bot?.Position == null || bot.Profile == null)
-            {
-                return false;
-            }
-
+            var bot = entry.Bot;
+            var profile = entry.Profile;
             var position = new Vector3(bot.Position.X, bot.Position.Y, bot.Position.Z);
-            var descriptor = bot.Profile.ToString().ParseJsonTo<ProfileDescriptor>();
-            var profile = new Profile(descriptor);
 
             var zone = ZoneOf(spawner, bot, position, sizes, zones);
             var followers = GroupPlan.FollowersOf(sizes, bot.Group);
@@ -157,15 +258,6 @@ namespace RaidRecovery.Client.Recovery
             if (zone == null || corePoint == null)
             {
                 Plugin.Log.LogWarning($"Bot {profile.Nickname} not restored: no zone around {position}");
-                return false;
-            }
-
-            // Without this, the game builds a bot it cannot draw, which then fails on every frame
-            await GameAssets.LoadAsync(profile.GetAllPrefabPaths(false));
-
-            // The raid ended while the bot was loading
-            if (!Singleton<IBotGame>.Instantiated || spawner._cancellationTokenSource.IsCancellationRequested)
-            {
                 return false;
             }
 
@@ -209,6 +301,23 @@ namespace RaidRecovery.Client.Recovery
                 spawner._cancellationTokenSource.Token
             );
             return true;
+        }
+
+        /// <summary>A bot of the snapshot, its profile read once and its look and gear loading.</summary>
+        private sealed class PreparedBot
+        {
+            public PreparedBot(BotDto bot, Profile profile, Task load)
+            {
+                Bot = bot;
+                Profile = profile;
+                Load = load;
+            }
+
+            public BotDto Bot { get; }
+
+            public Profile Profile { get; }
+
+            public Task Load { get; }
         }
     }
 }

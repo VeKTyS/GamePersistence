@@ -27,12 +27,13 @@ namespace RaidRecovery.Client.Teammates
         private static FieldInfo _miyakoSide;
 
         /// <summary>
-        /// A bot that follows a player, and not a bot boss: the game gives an AIBossPlayer to players only.
-        /// Only teammate mods make a bot follow a player. Their bots are not saved: the mod brings them back.
+        /// A bot that follows a human player. Every player has an AIBossPlayer, bots included, and a guard that
+        /// lost its boss may follow the AIBossPlayer of a boss bot: only a human leader makes it a teammate.
+        /// Only teammate mods make a bot follow a human. Their bots are not saved: the mod brings them back.
         /// </summary>
         public static bool FollowsAPlayer(Player bot)
         {
-            return bot.AIData?.BotOwner?.BotFollower?.BossToFollow is AIBossPlayer;
+            return bot.AIData?.BotOwner?.BotFollower?.BossToFollow is AIBossPlayer leader && leader._player != null && !leader._player.IsAI;
         }
 
         /// <summary>

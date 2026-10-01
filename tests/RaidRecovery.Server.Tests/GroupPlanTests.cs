@@ -61,6 +61,39 @@ public class GroupPlanTests
     }
 
     [Fact]
+    public void Loaded_bots_come_back_in_order_without_waiting_for_the_others()
+    {
+        string[] loaded = ["boss", "guard 1", "lone scav"];
+        var waiting = GroupPlan.LeadersFirst(Snapshot, bot => bot.Leader);
+
+        var ready = GroupPlan.ReadyNow(waiting, bot => loaded.Contains(bot.Name), bot => bot.Leader, bot => bot.Group);
+
+        Assert.Equal(["boss", "guard 1", "lone scav"], ready.Select(bot => bot.Name));
+    }
+
+    [Fact]
+    public void A_guard_waits_for_its_leader_still_loading()
+    {
+        string[] loaded = ["guard 1", "guard 2", "lone scav", "old snapshot"];
+        var waiting = GroupPlan.LeadersFirst(Snapshot, bot => bot.Leader);
+
+        var ready = GroupPlan.ReadyNow(waiting, bot => loaded.Contains(bot.Name), bot => bot.Leader, bot => bot.Group);
+
+        Assert.Equal(["lone scav", "old snapshot"], ready.Select(bot => bot.Name));
+    }
+
+    [Fact]
+    public void Guards_come_back_once_their_leader_was_given_up_on()
+    {
+        // The leader that never loaded is taken out of the waiting list
+        var waiting = Snapshot.Where(bot => bot.Name != "boss");
+
+        var ready = GroupPlan.ReadyNow(waiting, _ => true, bot => bot.Leader, bot => bot.Group);
+
+        Assert.Equal(["guard 1", "lone scav", "guard 2", "old snapshot"], ready.Select(bot => bot.Name));
+    }
+
+    [Fact]
     public void Bots_of_an_older_snapshot_have_no_group()
     {
         var sizes = GroupPlan.Sizes([new Bot("a"), new Bot("b")], bot => bot.Group);
