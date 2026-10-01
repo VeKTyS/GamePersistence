@@ -41,6 +41,13 @@ namespace RaidRecovery.Client.Models
         /// <summary>Who the player was in a raid played with others, as the co-op mod wrote it. Absent alone.</summary>
         [JsonProperty("coop", NullValueHandling = NullValueHandling.Ignore)]
         public string Coop { get; set; }
+
+        /// <summary>
+        /// Teammates alive at the snapshot that a teammate mod brings back itself, by the account ids that mod knows
+        /// them by. Absent when no such mod is installed or none of its teammates was alive.
+        /// </summary>
+        [JsonProperty("squad", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> Squad { get; set; }
     }
 
     internal sealed class BotDto
@@ -310,5 +317,8 @@ namespace RaidRecovery.Client.Models
 
         [JsonProperty("stance")]
         public StanceDto Stance { get; set; }
+
+        [JsonProperty("squad")]
+        public List<string> Squad { get; set; }
     }
 }

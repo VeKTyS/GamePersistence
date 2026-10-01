@@ -37,6 +37,24 @@ public sealed class SnapshotStoreTests : IDisposable
     }
 
     [Fact]
+    public void Write_keeps_the_squad_of_a_teammate_mod()
+    {
+        _store.Write(Samples.ProfileId, Samples.Snapshot() with { Squad = ["1234567", "7654321"] });
+
+        var read = _store.Read(Samples.ProfileId);
+
+        Assert.Equal(["1234567", "7654321"], read!.Squad);
+    }
+
+    [Fact]
+    public void A_snapshot_written_before_the_squad_existed_reads_without_one()
+    {
+        _store.Write(Samples.ProfileId, Samples.Snapshot());
+
+        Assert.Null(_store.Read(Samples.ProfileId)!.Squad);
+    }
+
+    [Fact]
     public void Write_keeps_opaque_blocks_untouched()
     {
         var snapshot = Samples.Snapshot() with

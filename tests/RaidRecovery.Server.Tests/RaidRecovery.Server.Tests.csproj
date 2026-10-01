@@ -28,6 +28,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\RaidRecovery.Client\Recovery\GroupPlan.cs" Link="Client\GroupPlan.cs" />
     <Compile Include="..\..\src\RaidRecovery.Client\Coop\CoopPolicy.cs" Link="Client\CoopPolicy.cs" />
+    <Compile Include="..\..\src\RaidRecovery.Client\Teammates\SquadPolicy.cs" Link="Client\SquadPolicy.cs" />
     <Compile Include="..\..\src\RaidRecovery.Fika.Client\RejoinPolicy.cs" Link="FikaClient\RejoinPolicy.cs" />
   </ItemGroup>
 

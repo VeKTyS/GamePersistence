@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using JsonType;
 using Newtonsoft.Json.Linq;
 using RaidRecovery.Client.Api;
 using RaidRecovery.Client.Coop;
+using RaidRecovery.Client.Teammates;
 using SPT.Common.Http;
 using SPT.Reflection.Utils;
 
@@ -30,7 +32,8 @@ namespace RaidRecovery.Client.Recovery
 
         /// <param name="raid">The raid as the coordinator knows it. null for a raid played alone.</param>
         /// <param name="onFailure">Called if the raid played with others cannot be launched after all.</param>
-        public static void Start(string map, string dateTime, string side, InterruptedRaid raid, ResumeWay way, Action<Exception> onFailure)
+        /// <param name="squad">Teammates a teammate mod brings back, as the snapshot holds them. null without one.</param>
+        public static void Start(string map, string dateTime, string side, List<string> squad, InterruptedRaid raid, ResumeWay way, Action<Exception> onFailure)
         {
             var app = ClientAppUtils.GetMainApp() ?? throw new InvalidOperationException("Game application not found");
 
@@ -52,6 +55,7 @@ namespace RaidRecovery.Client.Recovery
             }
 
             ApplyDefaultRaidSettings(settings);
+            TeammateMods.BeforeLaunch(map, IsScav(side), squad);
 
             var coordinator = CoopGuard.Coordinator;
             if (coordinator == null)

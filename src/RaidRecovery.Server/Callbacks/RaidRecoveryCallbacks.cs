@@ -98,6 +98,7 @@ public class RaidRecoveryCallbacks(
                 Stats = snapshot.Player?.Stats,
                 Side = snapshot.Raid?.Side,
                 Stance = snapshot.Player?.Stance,
+                Squad = snapshot.Squad,
             }
         );
     }

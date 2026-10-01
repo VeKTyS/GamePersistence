@@ -7,6 +7,7 @@ using EFT.Interactive;
 using JsonType;
 using Newtonsoft.Json.Linq;
 using RaidRecovery.Client.Models;
+using RaidRecovery.Client.Teammates;
 using UnityEngine;
 
 namespace RaidRecovery.Client.Raid
@@ -31,18 +32,8 @@ namespace RaidRecovery.Client.Raid
         public static List<Player> BotsOf(GameWorld gameWorld)
         {
             return gameWorld
-                .AllAlivePlayersList.Where(player => player != null && player.IsAI && !player.IsYourPlayer && !FollowsPlayer(player))
+                .AllAlivePlayersList.Where(player => player != null && player.IsAI && !player.IsYourPlayer && !TeammateMods.FollowsAPlayer(player))
                 .ToList();
-        }
-
-        /// <summary>
-        /// A bot that follows a player is a teammate, brought by a mod such as PIT Fireteam or Miyako Carry Service.
-        /// That mod brings it back itself at the next raid start: put back by us, it would only be a stranger, hostile.
-        /// The game gives an AIBossPlayer to players only, the bosses of bots have a BotBoss.
-        /// </summary>
-        private static bool FollowsPlayer(Player bot)
-        {
-            return bot.AIData?.BotOwner?.BotFollower?.BossToFollow is AIBossPlayer;
         }
 
         public static List<Corpse> CorpsesOf(GameWorld gameWorld)

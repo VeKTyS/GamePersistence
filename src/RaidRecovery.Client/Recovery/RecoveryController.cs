@@ -9,6 +9,7 @@ using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
 using RaidRecovery.Client.Raid;
+using RaidRecovery.Client.Teammates;
 using UnityEngine;
 
 namespace RaidRecovery.Client.Recovery
@@ -500,13 +501,14 @@ namespace RaidRecovery.Client.Recovery
             _step = Step.Launching;
             try
             {
-                RaidLauncher.Start(ticket.Map, ticket.DateTime, ticket.Side, _raid, _way, OnLaunchFailed);
+                RaidLauncher.Start(ticket.Map, ticket.DateTime, ticket.Side, ticket.Squad, _raid, _way, OnLaunchFailed);
                 Plugin.Log.LogInfo($"Raid relaunched on {ticket.Map}");
             }
             catch (Exception ex)
             {
                 // The profile is already restored: nothing is lost, the raid just has to be started by hand
                 Plugin.Log.LogError($"Automatic relaunch failed: {ex}");
+                TeammateMods.AfterFailedLaunch();
                 _step = Step.Idle;
                 Notify($"Profile restored. Start a raid on {ticket.Map} to resume at your position.");
             }
@@ -520,6 +522,7 @@ namespace RaidRecovery.Client.Recovery
         {
             _mainThread.Enqueue(() =>
             {
+                TeammateMods.AfterFailedLaunch();
                 _ticket = null;
                 _step = Step.Idle;
                 Notify($"The raid could not be joined: {failure.Message}");

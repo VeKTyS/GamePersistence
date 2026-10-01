@@ -47,6 +47,13 @@ public record Snapshot : IRequestData
     /// </summary>
     [JsonPropertyName("coop")]
     public string? Coop { get; init; }
+
+    /// <summary>
+    /// Teammates a teammate mod brings back itself, by the account ids that mod knows them by. Only read by
+    /// the game: the server hands it back as it came. Absent without such a mod.
+    /// </summary>
+    [JsonPropertyName("squad")]
+    public List<string>? Squad { get; init; }
 }
 
 public record PlayerState

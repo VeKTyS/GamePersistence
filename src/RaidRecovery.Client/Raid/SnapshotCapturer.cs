@@ -13,6 +13,7 @@ using RaidRecovery.Client.Coop;
 using RaidRecovery.Client.Models;
 using RaidRecovery.Client.Net;
 using RaidRecovery.Client.Recovery;
+using RaidRecovery.Client.Teammates;
 using SPT.Reflection.Utils;
 using UnityEngine;
 
@@ -309,6 +310,7 @@ namespace RaidRecovery.Client.Raid
                 SessionId = _sessionId,
                 Map = _gameWorld.LocationId,
                 Coop = _coop,
+                Squad = SquadOf(player),
                 Raid = new RaidDto
                 {
                     StartedAt = _startedAt,
@@ -325,6 +327,20 @@ namespace RaidRecovery.Client.Raid
                     Stance = ReadStance(player),
                 },
             };
+        }
+
+        /// <summary>The teammates are code of another mod: reading them must not cost the snapshot.</summary>
+        private List<string> SquadOf(Player player)
+        {
+            try
+            {
+                return TeammateMods.SquadOf(_gameWorld, player);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogWarning($"Could not read the squad of the player: {ex.Message}");
+                return null;
+            }
         }
 
         /// <summary>Time left on the raid timer, or null as long as the starting countdown is not over.</summary>

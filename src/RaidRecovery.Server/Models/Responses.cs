@@ -109,6 +109,10 @@ public record RestoreResponse
     /// <summary>Posture, breath and item in hands, handed back as the game sent them.</summary>
     [JsonPropertyName("stance")]
     public JsonElement? Stance { get; init; }
+
+    /// <summary>Teammates a teammate mod brings back itself, handed back as the game sent them.</summary>
+    [JsonPropertyName("squad")]
+    public List<string>? Squad { get; init; }
 }
 
 public record DiscardResponse
